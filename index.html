@@ -1,0 +1,2891 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Legenda Ular Purba: Penyelamatan dari T-Rex</title>
+    <!-- Tailwind CSS untuk antarmuka HUD modern dan responsif -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js r128 untuk rendering dunia 3D -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts: Cinzel & Plus Jakarta Sans untuk nuansa petualangan purba -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0b130e;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        #game-canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            cursor: crosshair;
+        }
+        .font-ancient {
+            font-family: 'Cinzel', serif;
+        }
+        /* Animasi floating teks damage & loot */
+        @keyframes floatUpFade {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, 0) scale(0.85);
+            }
+            20% {
+                opacity: 1;
+                transform: translate(-50%, -14px) scale(1.1);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -55px) scale(0.95);
+            }
+        }
+        .floating-text {
+            position: absolute;
+            pointer-events: none;
+            font-weight: 800;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95), 0 0 12px rgba(0, 0, 0, 0.7);
+            animation: floatUpFade 1.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            z-index: 30;
+            white-space: nowrap;
+        }
+        /* Efek pulse lembut untuk tombol utama */
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.45); }
+            50% { box-shadow: 0 0 36px rgba(52, 211, 153, 0.85); }
+        }
+        .btn-glow {
+            animation: pulseGlow 2.4s infinite ease-in-out;
+        }
+        /* Animasi denyut peringatan bahaya */
+        @keyframes dangerPulse {
+            0%, 100% { border-color: rgba(239, 68, 68, 0.45); }
+            50% { border-color: rgba(251, 191, 36, 0.9); }
+        }
+        .quest-pulse {
+            animation: dangerPulse 2s infinite ease-in-out;
+        }
+        /* Kustomisasi scrollbar kecil jika diperlukan */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 999px;
+        }
+    </style>
+</head>
+<body oncontextmenu="return false;">
+
+    <!-- Kanvas Utama 3D -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Wadah untuk Teks Melayang (Damage / Loot / Dialog Orang Tua) -->
+    <div id="floating-container" class="fixed inset-0 pointer-events-none overflow-hidden z-20"></div>
+
+    <!-- Vignette Bahaya saat HP Kritis atau Terkena Rintangan -->
+    <div id="damage-vignette" class="fixed inset-0 pointer-events-none opacity-0 transition-opacity duration-300 z-10"
+         style="background: radial-gradient(circle, transparent 52%, rgba(220, 38, 38, 0.72) 100%);"></div>
+
+    <!-- Kilatan Biru-Zamrud saat Meluncur Cepat (Dash) -->
+    <div id="dash-vignette" class="fixed inset-0 pointer-events-none opacity-0 transition-opacity duration-200 z-10"
+         style="background: radial-gradient(circle, transparent 62%, rgba(16, 185, 129, 0.35) 100%);"></div>
+
+    <!-- ==================== HUD IN-GAME ==================== -->
+    <div id="hud" class="fixed inset-0 pointer-events-none hidden flex-col justify-between p-3 sm:p-4 z-20">
+        
+        <!-- BARIS ATAS: Status Survival (Kiri), Banner Misi & Kompas (Tengah), Mini-Radar & Kontrol (Kanan) -->
+        <div class="flex flex-wrap items-start justify-between gap-2.5 w-full">
+            
+            <!-- Panel Kiri: Status Ular Purba & Inventaris -->
+            <div class="flex flex-col gap-2 bg-stone-950/85 backdrop-blur-md border border-emerald-500/35 rounded-2xl p-3 sm:p-3.5 shadow-2xl w-full sm:w-72 pointer-events-auto">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xl">🐍</span>
+                        <div>
+                            <h2 class="text-xs sm:text-sm font-extrabold text-emerald-300 tracking-wide uppercase">Titanoboa Muda</h2>
+                            <p class="text-[11px] text-stone-400">Gigitan: <span id="stat-atk" class="text-amber-400 font-bold">22</span> &bull; Lv.<span id="stat-evo" class="text-cyan-300 font-bold">1</span></p>
+                        </div>
+                    </div>
+                    <span id="score-badge" class="text-xs font-bold bg-emerald-950/95 text-emerald-300 border border-emerald-500/35 px-2.5 py-1 rounded-xl">
+                        Skor: 0
+                    </span>
+                </div>
+
+                <!-- Bar Darah (HP) -->
+                <div>
+                    <div class="flex justify-between text-xs font-bold mb-1">
+                        <span class="text-rose-300 flex items-center gap-1">❤️ Darah (HP)</span>
+                        <span id="hp-text" class="text-white">120 / 120</span>
+                    </div>
+                    <div class="w-full h-3 bg-stone-800 rounded-full overflow-hidden border border-stone-700">
+                        <div id="hp-bar" class="h-full bg-gradient-to-r from-rose-600 via-red-500 to-emerald-400 transition-all duration-150 rounded-full" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Bar Stamina / Meluncur Cepat (Dash) -->
+                <div>
+                    <div class="flex justify-between text-xs font-bold mb-1">
+                        <span class="text-cyan-300 flex items-center gap-1">⚡ Stamina Dash <kbd class="text-[9px] bg-stone-800 px-1 rounded text-stone-300">Spasi</kbd></span>
+                        <span id="stamina-text" class="text-white">100 / 100</span>
+                    </div>
+                    <div class="w-full h-2.5 bg-stone-800 rounded-full overflow-hidden border border-stone-700">
+                        <div id="stamina-bar" class="h-full bg-gradient-to-r from-teal-500 via-cyan-400 to-amber-300 transition-all duration-100 rounded-full" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Inventaris Sumber Daya -->
+                <div class="grid grid-cols-3 gap-1.5 pt-1 border-t border-stone-800">
+                    <div class="bg-stone-900/95 border border-amber-700/35 rounded-xl p-1.5 text-center">
+                        <div class="text-sm">🪵</div>
+                        <div id="inv-wood" class="text-xs sm:text-sm font-extrabold text-amber-300">0</div>
+                        <div class="text-[10px] text-stone-400">Kayu</div>
+                    </div>
+                    <div class="bg-stone-900/95 border border-cyan-500/35 rounded-xl p-1.5 text-center">
+                        <div class="text-sm">💎</div>
+                        <div id="inv-crystal" class="text-xs sm:text-sm font-extrabold text-cyan-300">0</div>
+                        <div class="text-[10px] text-stone-400">Kristal</div>
+                    </div>
+                    <div class="bg-stone-900/95 border border-rose-500/35 rounded-xl p-1.5 text-center">
+                        <div class="text-sm">🍎</div>
+                        <div id="inv-food" class="text-xs sm:text-sm font-extrabold text-rose-300">0</div>
+                        <div class="text-[10px] text-stone-400">Buah</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel Tengah: Banner Misi Aktif, Kompas Arah & Boss Bar -->
+            <div class="flex flex-col items-center gap-2 mx-auto order-first sm:order-none w-full sm:w-auto max-w-lg">
+                <!-- Banner Misi & Kompas -->
+                <div class="w-full bg-stone-950/85 backdrop-blur-md border border-amber-500/45 rounded-2xl px-4 py-2.5 shadow-2xl flex items-center gap-3 quest-pulse">
+                    <div id="compass-arrow" class="w-10 h-10 shrink-0 rounded-full bg-amber-500/20 border-2 border-amber-400/70 flex items-center justify-center text-amber-300 font-black text-lg transition-transform duration-75 shadow-inner">
+                        ⬆
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center justify-between gap-2">
+                            <span id="zone-badge" class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                                ZONA 1/4: Hutan Purba
+                            </span>
+                            <span id="quest-distance" class="text-[11px] font-bold text-amber-200 shrink-0">
+                                84 m
+                            </span>
+                        </div>
+                        <div id="quest-title" class="text-xs sm:text-sm font-extrabold text-white truncate mt-1">
+                            Hancurkan Barikade Akar & Batu Runtuhan!
+                        </div>
+                        <div id="quest-hint" class="text-[11px] text-stone-300 truncate">
+                            Kumpulkan Kayu & Kristal lalu Klik Kanan untuk mendobrak jalan.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bar Darah Boss Raja T-Rex (Muncul di Zona Final) -->
+                <div id="boss-hud" class="hidden w-full bg-red-950/90 backdrop-blur-md border border-red-500/60 rounded-2xl p-3 shadow-2xl">
+                    <div class="flex justify-between items-center text-xs font-extrabold mb-1">
+                        <span class="text-red-300 flex items-center gap-1.5">🦖 RAJA TYRANNOSAURUS JAHAT</span>
+                        <span id="boss-hp-text" class="text-white">520 / 520</span>
+                    </div>
+                    <div class="w-full h-3 bg-stone-900 rounded-full overflow-hidden border border-red-700/60">
+                        <div id="boss-hp-bar" class="h-full bg-gradient-to-r from-red-700 via-orange-600 to-amber-500 transition-all duration-150 rounded-full" style="width: 100%;"></div>
+                    </div>
+                    <div class="mt-1.5 flex items-center justify-between text-[11px] font-bold text-amber-200">
+                        <span>🦴 Kandang Tulang Orang Tua</span>
+                        <span id="cage-status" class="text-rose-300">🔒 Terkunci oleh Raja T-Rex</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel Kanan: Mini-Radar Taktis, Tombol Audio & Panduan Kontrol -->
+            <div class="hidden md:flex flex-col items-end gap-2 pointer-events-auto">
+                <div class="flex items-center gap-2">
+                    <button id="btn-mute" class="bg-stone-950/85 hover:bg-stone-900 backdrop-blur-md border border-stone-700 text-stone-200 text-xs font-bold px-3 py-2 rounded-xl shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                        <span id="mute-icon">🔊</span>
+                        <span id="mute-label">Suara</span>
+                    </button>
+                </div>
+
+                <!-- Mini-Radar -->
+                <div class="relative bg-stone-950/85 backdrop-blur-md border border-emerald-500/35 rounded-2xl p-2 shadow-2xl">
+                    <canvas id="radar-canvas" width="132" height="132" class="rounded-xl block"></canvas>
+                    <span class="absolute top-2.5 left-1/2 -translate-x-1/2 text-[9px] font-black text-amber-300 bg-stone-950/80 px-1.5 rounded">UTARA</span>
+                </div>
+
+                <!-- Panduan Singkat Kontrol -->
+                <div class="bg-stone-950/80 backdrop-blur-md border border-stone-800 rounded-2xl p-2.5 text-[11px] text-stone-300 space-y-1 shadow-xl">
+                    <div><kbd class="px-1.5 py-0.5 bg-stone-800 rounded text-white font-bold">W A S D</kbd> Gerak Ular</div>
+                    <div><kbd class="px-1.5 py-0.5 bg-stone-800 rounded text-cyan-300 font-bold">Spasi</kbd> Meluncur Cepat</div>
+                    <div class="text-amber-300 font-bold">🖱️ Klik Kanan: Serang / Tambang</div>
+                    <div class="text-stone-400">🖱️ Klik Kiri Geser: Putar Kamera</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- INDIKATOR TARGET TERDEKAT DI DEPAN ULAR -->
+        <div id="target-prompt" class="self-center bg-stone-950/85 backdrop-blur-sm border border-emerald-400/50 px-4 py-1.5 rounded-full text-xs font-extrabold text-emerald-200 shadow-xl opacity-0 transition-opacity duration-150">
+            🖱️ Klik Kanan untuk Menambang
+        </div>
+
+        <!-- BARIS BAWAH: Panel Crafting / Evolusi (1, 2, 3) & Kontrol Sentuh Mobile -->
+        <div class="flex flex-col items-center gap-2 w-full">
+            <!-- Kontrol Sentuh Khusus Layar Kecil (Mobile / Tablet) -->
+            <div class="flex md:hidden justify-between items-center w-full px-1 pointer-events-auto">
+                <div class="grid grid-cols-3 gap-1.5 w-32">
+                    <div></div>
+                    <button id="touch-w" class="bg-stone-900/90 active:bg-emerald-600 border border-stone-600 text-white font-bold p-3 rounded-xl text-sm">W</button>
+                    <div></div>
+                    <button id="touch-a" class="bg-stone-900/90 active:bg-emerald-600 border border-stone-600 text-white font-bold p-3 rounded-xl text-sm">A</button>
+                    <button id="touch-s" class="bg-stone-900/90 active:bg-emerald-600 border border-stone-600 text-white font-bold p-3 rounded-xl text-sm">S</button>
+                    <button id="touch-d" class="bg-stone-900/90 active:bg-emerald-600 border border-stone-600 text-white font-bold p-3 rounded-xl text-sm">D</button>
+                </div>
+                <div class="flex flex-col gap-2">
+                    <button id="touch-dash" class="bg-cyan-600/90 active:scale-95 text-white font-extrabold px-4 py-2.5 rounded-xl shadow-lg border border-cyan-300/50 text-xs">
+                        ⚡ DASH
+                    </button>
+                    <button id="touch-attack" class="bg-gradient-to-br from-amber-500 to-red-600 active:scale-95 text-white font-extrabold px-4 py-3.5 rounded-2xl shadow-xl border border-amber-300/50 text-xs">
+                        🐍 GIGIT / TAMBANG
+                    </button>
+                </div>
+            </div>
+
+            <!-- Panel Crafting & Evolusi (Tombol 1, 2, 3 atau Klik) -->
+            <div class="grid grid-cols-3 gap-2 sm:gap-3 bg-stone-950/90 backdrop-blur-md border border-stone-700/80 p-2 sm:p-2.5 rounded-2xl shadow-2xl pointer-events-auto max-w-2xl w-full">
+                <!-- Slot 1: Makan Buah Purba -->
+                <button id="craft-1" onclick="craftItem(1)" class="group relative flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2.5 bg-stone-900/95 hover:bg-emerald-950/80 border border-stone-700 hover:border-emerald-400/70 rounded-xl p-2 text-left transition active:scale-95 cursor-pointer">
+                    <span class="absolute top-1.5 right-2 text-[10px] font-extrabold bg-stone-800 text-stone-300 px-1.5 py-0.5 rounded-md">[1]</span>
+                    <div class="text-xl sm:text-2xl">🍎</div>
+                    <div class="text-center sm:text-left">
+                        <div class="text-xs font-extrabold text-white group-hover:text-emerald-300">Makan Buah Purba</div>
+                        <div class="text-[10px] text-emerald-400 font-semibold">+40 HP & +55 Stamina</div>
+                        <div class="text-[10px] text-rose-300 mt-0.5">Biaya: 2 🍎 Buah</div>
+                    </div>
+                </button>
+
+                <!-- Slot 2: Evolusi Taring Tajam -->
+                <button id="craft-2" onclick="craftItem(2)" class="group relative flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2.5 bg-stone-900/95 hover:bg-amber-950/80 border border-stone-700 hover:border-amber-400/70 rounded-xl p-2 text-left transition active:scale-95 cursor-pointer">
+                    <span class="absolute top-1.5 right-2 text-[10px] font-extrabold bg-stone-800 text-stone-300 px-1.5 py-0.5 rounded-md">[2]</span>
+                    <div class="text-xl sm:text-2xl">🦷</div>
+                    <div class="text-center sm:text-left">
+                        <div class="text-xs font-extrabold text-white group-hover:text-amber-300">Evolusi Taring Tajam</div>
+                        <div class="text-[10px] text-amber-400 font-semibold">+18 Serang & Tebang</div>
+                        <div class="text-[10px] text-cyan-300 mt-0.5">Biaya: 2 🪵 + 3 💎</div>
+                    </div>
+                </button>
+
+                <!-- Slot 3: Evolusi Sisik Baja -->
+                <button id="craft-3" onclick="craftItem(3)" class="group relative flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2.5 bg-stone-900/95 hover:bg-cyan-950/80 border border-stone-700 hover:border-cyan-400/70 rounded-xl p-2 text-left transition active:scale-95 cursor-pointer">
+                    <span class="absolute top-1.5 right-2 text-[10px] font-extrabold bg-stone-800 text-stone-300 px-1.5 py-0.5 rounded-md">[3]</span>
+                    <div class="text-xl sm:text-2xl">🛡️</div>
+                    <div class="text-center sm:text-left">
+                        <div class="text-xs font-extrabold text-white group-hover:text-cyan-300">Evolusi Sisik Baja</div>
+                        <div class="text-[10px] text-cyan-400 font-semibold">+40 Max HP & Pulih</div>
+                        <div class="text-[10px] text-cyan-300 mt-0.5">Biaya: 3 🪵 + 4 💎</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== LAYAR PEMBUKA (STORY INTRO & PANDUAN RINTANGAN) ==================== -->
+    <div id="intro-screen" class="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-4 bg-gradient-to-b from-stone-950/85 via-emerald-950/80 to-stone-950/90 backdrop-blur-md overflow-y-auto">
+        <div class="max-w-2xl w-full bg-stone-900/95 border border-emerald-500/40 rounded-3xl p-5 sm:p-7 shadow-2xl text-center space-y-4 my-auto">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/35 text-emerald-300 text-xs font-bold tracking-wider uppercase">
+                🦖 Ekspedisi 3D Survival & Rintangan Purba
+            </div>
+            <h1 class="font-ancient text-2xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-amber-200 to-rose-400 leading-tight">
+                Legenda Ular Purba:<br>Penyelamatan dari T-Rex
+            </h1>
+            <p class="text-stone-300 text-xs sm:text-sm leading-relaxed">
+                <strong class="text-amber-300">Raja Tyrannosaurus Jahat</strong> telah menyekap <strong class="text-emerald-300">Ayah & Ibu Ular Purba</strong> di dalam <em>Kandang Tulang Raksasa</em> di puncak gunung berapi utara!
+                Tempuh perjalanan berbahaya melewati <strong>4 Zona Rintangan</strong>, tebang pohon untuk membuat jembatan lava, hindari hujan meteor, hancurkan totem penjaga, dan kalahkan sang T-Rex!
+            </p>
+
+            <!-- Panduan 4 Rintangan Ekspedisi -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-left text-[11px]">
+                <div class="bg-stone-950/85 border border-emerald-500/25 p-2.5 rounded-2xl">
+                    <div class="text-base mb-0.5">🌿🪨</div>
+                    <div class="font-extrabold text-emerald-300">1. Barikade Akar</div>
+                    <div class="text-stone-400 leading-snug mt-0.5">Dobrak akar berduri & batu runtuhan dengan Klik Kanan.</div>
+                </div>
+                <div class="bg-stone-950/85 border border-amber-500/25 p-2.5 rounded-2xl">
+                    <div class="text-base mb-0.5">🌋🌉</div>
+                    <div class="font-extrabold text-amber-300">2. Batu & Sungai Lava</div>
+                    <div class="text-stone-400 leading-snug mt-0.5">Hindari batu bergulir, lompati geyser, atau tebang pohon jembatan!</div>
+                </div>
+                <div class="bg-stone-950/85 border border-cyan-500/25 p-2.5 rounded-2xl">
+                    <div class="text-base mb-0.5">☄️🗿</div>
+                    <div class="font-extrabold text-cyan-300">3. Meteor & Totem</div>
+                    <div class="text-stone-400 leading-snug mt-0.5">Waspadai hujan meteor & hancurkan 2 Pilar Totem gerbang.</div>
+                </div>
+                <div class="bg-stone-950/85 border border-rose-500/30 p-2.5 rounded-2xl">
+                    <div class="text-base mb-0.5">🦖🦴</div>
+                    <div class="font-extrabold text-rose-300">4. Sarang Raja T-Rex</div>
+                    <div class="text-stone-400 leading-snug mt-0.5">Kalahkan T-Rex raksasa & bebaskan kedua orang tuamu!</div>
+                </div>
+            </div>
+
+            <!-- Kotak Panduan Kontrol -->
+            <div class="grid grid-cols-3 gap-2 bg-stone-950/85 border border-stone-800 rounded-2xl p-3 text-left text-xs">
+                <div class="bg-stone-900/90 p-2 rounded-xl border border-stone-800">
+                    <div class="text-emerald-400 font-extrabold">Gerak Ular</div>
+                    <div class="text-stone-300 text-[11px]"><strong class="text-white">W/S</strong> Maju/Mundur</div>
+                    <div class="text-stone-300 text-[11px]"><strong class="text-white">A/D</strong> Belok Kiri/Kanan</div>
+                </div>
+                <div class="bg-stone-900/90 p-2 rounded-xl border border-cyan-500/30">
+                    <div class="text-cyan-300 font-extrabold">Meluncur Cepat</div>
+                    <div class="text-white font-bold text-[11px]">⌨️ Spasi (Dash)</div>
+                    <div class="text-stone-400 text-[10px]">Hindari batu & meteor</div>
+                </div>
+                <div class="bg-stone-900/90 p-2 rounded-xl border border-amber-500/30">
+                    <div class="text-amber-300 font-extrabold">Aksi & Evolusi</div>
+                    <div class="text-white font-bold text-[11px]">🖱️ Klik Kanan</div>
+                    <div class="text-stone-400 text-[10px]">Serang, Tambang & [1-3]</div>
+                </div>
+            </div>
+
+            <button id="btn-start" class="w-full py-3.5 sm:py-4 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-500 hover:from-emerald-400 hover:to-amber-400 text-stone-950 font-black text-base sm:text-lg tracking-wide uppercase transition transform hover:scale-[1.02] active:scale-95 btn-glow cursor-pointer">
+                🐍 MULAI PETUALANGAN
+            </button>
+        </div>
+    </div>
+
+    <!-- ==================== LAYAR KEMENANGAN (VICTORY) ==================== -->
+    <div id="victory-screen" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-stone-950/85 backdrop-blur-md">
+        <div class="max-w-lg w-full bg-gradient-to-b from-emerald-950/95 to-stone-900/95 border border-amber-400/55 rounded-3xl p-6 sm:p-8 shadow-2xl text-center space-y-5">
+            <div class="text-5xl">🏆🐍✨</div>
+            <h2 class="font-ancient text-2xl sm:text-4xl font-black text-amber-300">
+                Penyelamatan Berhasil!
+            </h2>
+            <p class="text-stone-200 text-sm sm:text-base leading-relaxed">
+                Seluruh rintangan lembah purba berhasil dilewati dan <strong>Raja Tyrannosaurus Jahat</strong> telah ditumbangkan! <strong class="text-emerald-300">Ayah & Ibu Ular Purba</strong> kini bebas dari Kandang Tulang dan memelukmu dengan bangga.
+            </p>
+            <div class="bg-stone-950/85 border border-amber-500/35 rounded-2xl p-4 grid grid-cols-3 gap-2 text-sm">
+                <div>
+                    <div class="text-stone-400 text-[11px]">Skor Akhir</div>
+                    <div id="victory-score" class="text-lg sm:text-xl font-black text-amber-300">0</div>
+                </div>
+                <div>
+                    <div class="text-stone-400 text-[11px]">Kekuatan Taring</div>
+                    <div id="victory-atk" class="text-lg sm:text-xl font-black text-emerald-300">22</div>
+                </div>
+                <div>
+                    <div class="text-stone-400 text-[11px]">Waktu Misi</div>
+                    <div id="victory-time" class="text-lg sm:text-xl font-black text-cyan-300">00:00</div>
+                </div>
+            </div>
+            <button onclick="resetGame()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-400 to-emerald-400 hover:from-amber-300 hover:to-emerald-300 text-stone-950 font-black text-base uppercase tracking-wide transition transform hover:scale-[1.02] active:scale-95 cursor-pointer">
+                🔄 Main Lagi
+            </button>
+        </div>
+    </div>
+
+    <!-- ==================== LAYAR GAME OVER ==================== -->
+    <div id="gameover-screen" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-stone-950/90 backdrop-blur-md">
+        <div class="max-w-md w-full bg-gradient-to-b from-red-950/90 to-stone-900/95 border border-red-500/50 rounded-3xl p-6 sm:p-8 shadow-2xl text-center space-y-5">
+            <div class="text-5xl">💀🌋</div>
+            <h2 class="font-ancient text-2xl sm:text-3xl font-black text-red-400">
+                Ular Purba Tumbang
+            </h2>
+            <p id="gameover-reason" class="text-stone-300 text-sm sm:text-base leading-relaxed">
+                Rintangan alam purba terlalu ganas. Kumpulkan buah untuk memulihkan HP & Stamina, lalu perkuat taring serta sisikmu!
+            </p>
+            <div class="bg-stone-950/80 border border-red-500/30 rounded-2xl p-3 text-sm">
+                <span class="text-stone-400">Skor Tercapai: </span>
+                <span id="gameover-score" class="font-black text-amber-300 text-lg">0</span>
+            </div>
+            <button onclick="resetGame()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-red-500 to-amber-500 hover:from-red-400 hover:to-amber-400 text-white font-black text-base uppercase tracking-wide transition transform hover:scale-[1.02] active:scale-95 cursor-pointer">
+                🔄 Coba Lagi
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ============================================================================
+         * LEGENDA ULAR PURBA: PENYELAMATAN DARI T-REX (EDISI RINTANGAN MULTI-ZONA)
+         * Game 3D Survival & Obstacle Adventure menggunakan Three.js (r128)
+         * ============================================================================
+         */
+
+        // --- 1. SISTEM AUDIO PROSEDURAL (WEB AUDIO API TANPA URL EKSTERNAL) ---
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) {
+                        this.ctx = new AudioCtx();
+                    }
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            playBite() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(360, now);
+                osc.frequency.exponentialRampToValueAtTime(75, now + 0.16);
+                gain.gain.setValueAtTime(0.22, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.18);
+            }
+
+            playDash() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.exponentialRampToValueAtTime(640, now + 0.22);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            }
+
+            playMine(type) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                if (type === 'crystal' || type === 'totem') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(860, now);
+                    osc.frequency.exponentialRampToValueAtTime(1480, now + 0.18);
+                } else if (type === 'wood' || type === 'barricade') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(185, now);
+                    osc.frequency.exponentialRampToValueAtTime(75, now + 0.16);
+                } else {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440, now);
+                    osc.frequency.exponentialRampToValueAtTime(650, now + 0.14);
+                }
+                gain.gain.setValueAtTime(0.24, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.21);
+            }
+
+            playTreeCrash() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(38, now + 0.65);
+                gain.gain.setValueAtTime(0.35, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.68);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.7);
+            }
+
+            playGeyserHiss() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(520, now);
+                osc.frequency.exponentialRampToValueAtTime(190, now + 0.35);
+                gain.gain.setValueAtTime(0.14, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.38);
+            }
+
+            playMeteorImpact() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(110, now);
+                osc.frequency.exponentialRampToValueAtTime(32, now + 0.45);
+                gain.gain.setValueAtTime(0.28, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            }
+
+            playCraft() {
+                if (this.muted || !this.ctx) return;
+                const notes = [440, 554.37, 659.25, 880];
+                notes.forEach((freq, idx) => {
+                    const now = this.ctx.currentTime + idx * 0.06;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.24);
+                });
+            }
+
+            playRoar() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(125, now);
+                osc.frequency.linearRampToValueAtTime(52, now + 0.5);
+                gain.gain.setValueAtTime(0.32, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.56);
+            }
+
+            playVictory() {
+                if (this.muted || !this.ctx) return;
+                const melody = [523.25, 659.25, 783.99, 1046.50, 783.99, 1046.50];
+                melody.forEach((freq, i) => {
+                    const now = this.ctx.currentTime + i * 0.14;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(0.24, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.36);
+                });
+            }
+        }
+
+        const sound = new SoundEngine();
+
+        // --- 2. VARIABEL GLOBAL & STATUS EKSPEDISI ---
+        let scene, camera, renderer, clock;
+        let hemiLight, dirLight;
+        let gameState = 'INTRO'; // 'INTRO', 'PLAYING', 'VICTORY', 'GAMEOVER'
+        let missionElapsed = 0;
+
+        // Koordinat Penting Ekspedisi (Selatan z=+152 -> Utara z=-184)
+        const START_POS = new THREE.Vector3(0, 0, 152);
+        const BARRICADE_POS = new THREE.Vector3(0, 0, 68);
+        const LAVA_Z_START = -10;
+        const LAVA_Z_END = -26;
+        const BRIDGE_TREE_POS = new THREE.Vector3(12, 0, -7.5);
+        const TOTEM_GATE_POS = new THREE.Vector3(0, 0, -112);
+        const CAGE_POS = new THREE.Vector3(0, 0, -184);
+
+        const player = {
+            pos: START_POS.clone(),
+            heading: Math.PI, // Menghadap Utara (-Z)
+            baseSpeed: 22,
+            turnSpeed: 2.6,
+            hp: 120,
+            maxHp: 120,
+            stamina: 100,
+            maxStamina: 100,
+            attackDamage: 22,
+            armorLevel: 0,
+            fangLevel: 0,
+            score: 0,
+            inv: { wood: 0, crystal: 0, food: 0 },
+            attackCooldown: 0,
+            attackAnimTimer: 0,
+            dashTimer: 0,
+            dashCooldown: 0,
+            invulnTimer: 0,
+            pathHistory: []
+        };
+
+        // Objek 3D Karakter & Indikator
+        let snakeGroup, snakeHead, upperJaw, lowerJaw, tongueMesh, slashMesh, targetRing, compassRing3D;
+        const snakeSegments = [];
+        const NUM_SEGMENTS = 16;
+
+        // Entitas Dunia & Rintangan Multi-Zona
+        let resources = [];
+        let raptors = [];
+        let barricadeObstacle = null;   // Rintangan 1: Barikade Akar Berduri & Batu Runtuhan
+        let rollingBoulders = [];       // Rintangan 2: Batu Raksasa Bergulir
+        let boulderSpawnTimer = 0;
+        let lavaMesh = null;            // Rintangan 3A: Sungai Lava Mendidih
+        let bridgeTree = null;          // Rintangan 3B: Pohon Raksasa Lapuk -> Jembatan Kayu
+        let stonePillars = [];          // Rintangan 3C: Pilar Batu & Geyser Api
+        let volcanicMeteors = [];       // Rintangan 4: Hujan Meteor Vulkanik
+        let meteorSpawnTimer = 0;
+        let guardianTotems = [];        // Rintangan 5A: 2 Pilar Totem Penjaga
+        let totemGate = null;           // Rintangan 5B: Gerbang Energi Terkutuk
+        let trexBoss = null;            // Boss Final: Raja Tyrannosaurus Jahat
+        let shockwaves = [];            // Gelombang Kejut Hentakan T-Rex
+        let boneCage = null;            // Kandang Tulang Raksasa
+        let parentSnakes = [];          // Ayah & Ibu Ular Purba
+        let parentCalloutTimer = 3;
+        let particles = [];
+
+        // Kontrol Input & Kamera
+        const keys = { w: false, a: false, s: false, d: false };
+        const camControl = {
+            yawOffset: 0,
+            pitch: 0.44,
+            distance: 25,
+            isDragging: false,
+            prevMouseX: 0,
+            prevMouseY: 0,
+            shakeTimer: 0,
+            shakeIntensity: 0
+        };
+
+        function triggerScreenShake(intensity = 0.65, duration = 0.25) {
+            camControl.shakeIntensity = Math.max(camControl.shakeIntensity, intensity);
+            camControl.shakeTimer = Math.max(camControl.shakeTimer, duration);
+        }
+
+        // --- 3. PEMBUATAN TEKSTUR PROSEDURAL ---
+        function createGroundTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#1b3320';
+            ctx.fillRect(0, 0, 512, 512);
+
+            for (let i = 0; i < 4800; i++) {
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                const r = 1 + Math.random() * 4;
+                const pick = Math.random();
+                if (pick < 0.42) ctx.fillStyle = '#234429';
+                else if (pick < 0.72) ctx.fillStyle = '#152819';
+                else if (pick < 0.9) ctx.fillStyle = '#334d2b';
+                else ctx.fillStyle = '#3f3526';
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(22, 55);
+            return tex;
+        }
+
+        function createScaleTexture(primaryHex, secondaryHex) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = primaryHex;
+            ctx.fillRect(0, 0, 256, 256);
+
+            ctx.fillStyle = secondaryHex;
+            for (let y = 0; y < 256; y += 24) {
+                for (let x = 0; x < 256; x += 24) {
+                    const offset = (y / 24) % 2 === 0 ? 0 : 12;
+                    ctx.beginPath();
+                    ctx.arc(x + offset, y, 9, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            return tex;
+        }
+
+        // --- 4. INISIALISASI DUNIA 3D THREE.JS ---
+        function initThree() {
+            const canvas = document.getElementById('game-canvas');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x142b1d);
+            scene.fog = new THREE.FogExp2(0x142b1d, 0.0056);
+
+            camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.5, 480);
+
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            clock = new THREE.Clock();
+
+            // Pencahayaan Dinamis
+            hemiLight = new THREE.HemisphereLight(0x9ee6b8, 0x261d14, 0.9);
+            hemiLight.position.set(0, 90, 0);
+            scene.add(hemiLight);
+
+            dirLight = new THREE.DirectionalLight(0xfff0cc, 1.15);
+            dirLight.position.set(65, 130, 50);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 10;
+            dirLight.shadow.camera.far = 420;
+            const d = 190;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            // Lantai Lembah Ekspedisi (Panjang Selatan -> Utara)
+            const groundGeo = new THREE.PlaneGeometry(170, 420);
+            const groundMat = new THREE.MeshStandardMaterial({
+                map: createGroundTexture(),
+                roughness: 0.9,
+                metalness: 0.05
+            });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.set(0, 0, -15);
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Jalan Setapak Utama
+            const trailGeo = new THREE.PlaneGeometry(13, 355);
+            const trailMat = new THREE.MeshStandardMaterial({ color: 0x3b3123, roughness: 0.95 });
+            const trailMesh = new THREE.Mesh(trailGeo, trailMat);
+            trailMesh.rotation.x = -Math.PI / 2;
+            trailMesh.position.set(0, 0.04, -15);
+            trailMesh.receiveShadow = true;
+            scene.add(trailMesh);
+
+            // Tebing Ngarai Kiri-Kanan & Penyempitan Gerbang Rintangan
+            buildCanyonCliffs();
+
+            // Bangun Karakter Ular Purba & Kompas 3D
+            buildPlayerSnake();
+
+            // Cincin Penanda Target di Tanah
+            const ringGeo = new THREE.RingGeometry(1.9, 2.5, 32);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: 0x34d399,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.8
+            });
+            targetRing = new THREE.Mesh(ringGeo, ringMat);
+            targetRing.rotation.x = -Math.PI / 2;
+            targetRing.position.y = 0.14;
+            targetRing.visible = false;
+            scene.add(targetRing);
+
+            // Bangun Seluruh Dunia, Sumber Daya, Rintangan & Boss
+            populateWorld();
+
+            // Pasang Kontrol Input
+            setupInputListeners();
+        }
+
+        function buildCanyonCliffs() {
+            const jungleRockMat = new THREE.MeshStandardMaterial({ color: 0x263329, roughness: 0.92, flatShading: true });
+            const volcanicRockMat = new THREE.MeshStandardMaterial({ color: 0x291818, roughness: 0.9, flatShading: true });
+
+            // Dinding tebing sepanjang sisi kiri (x = -62) dan kanan (x = +62)
+            for (let z = 175; z >= -210; z -= 14) {
+                const mat = z < -30 ? volcanicRockMat : jungleRockMat;
+                [-62, 62].forEach((xSide, idx) => {
+                    const h = 24 + Math.abs(Math.sin(z * 0.1 + idx)) * 16;
+                    const r = 13 + (Math.abs(z) % 5) * 1.5;
+                    const cliff = new THREE.Mesh(new THREE.ConeGeometry(r, h, 6), mat);
+                    cliff.position.set(xSide + (idx === 0 ? -3 : 3), h / 2 - 2, z);
+                    cliff.rotation.y = z * 0.3;
+                    scene.add(cliff);
+                });
+            }
+
+            // Tebing Penyempitan di Rintangan 1 (Barikade Akar z = +68) agar pemain harus mendobrak gerbang tengah
+            [-36, -24, 24, 36].forEach(xPos => {
+                const blocker = new THREE.Mesh(new THREE.DodecahedronGeometry(11, 0), jungleRockMat);
+                blocker.position.set(xPos, 6, BARRICADE_POS.z);
+                blocker.castShadow = true;
+                scene.add(blocker);
+            });
+
+            // Tebing Penyempitan di Rintangan 5 (Gerbang Totem z = -112)
+            [-38, -25, 25, 38].forEach(xPos => {
+                const blocker = new THREE.Mesh(new THREE.DodecahedronGeometry(11.5, 0), volcanicRockMat);
+                blocker.position.set(xPos, 6.5, TOTEM_GATE_POS.z);
+                blocker.castShadow = true;
+                scene.add(blocker);
+            });
+        }
+
+        // --- 5. PEMBUATAN KARAKTER ULAR PURBA (TITANOBOA) ---
+        function buildPlayerSnake() {
+            snakeGroup = new THREE.Group();
+            scene.add(snakeGroup);
+
+            const scaleTex = createScaleTexture('#0f766e', '#10b981');
+            const headMat = new THREE.MeshStandardMaterial({ map: scaleTex, roughness: 0.42, metalness: 0.15 });
+            const bellyMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.5 });
+
+            snakeHead = new THREE.Group();
+            snakeHead.position.copy(player.pos);
+            snakeHead.position.y = 1.25;
+            snakeGroup.add(snakeHead);
+
+            // Rahang Atas
+            upperJaw = new THREE.Group();
+            const skullMesh = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.0, 2.8), headMat);
+            skullMesh.position.set(0, 0.25, 0.4);
+            skullMesh.castShadow = true;
+            upperJaw.add(skullMesh);
+
+            const snoutMesh = new THREE.Mesh(new THREE.ConeGeometry(1.15, 1.6, 5), headMat);
+            snoutMesh.rotation.x = Math.PI / 2;
+            snoutMesh.position.set(0, 0.22, 2.2);
+            upperJaw.add(snoutMesh);
+
+            // Tanduk & Taring Purba
+            const hornMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.3 });
+            [-0.75, 0.75].forEach(xH => {
+                const horn = new THREE.Mesh(new THREE.ConeGeometry(0.24, 1.75, 6), hornMat);
+                horn.position.set(xH, 0.95, -0.5);
+                horn.rotation.x = -0.65;
+                horn.rotation.z = xH < 0 ? 0.25 : -0.25;
+                upperJaw.add(horn);
+            });
+
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+            [-0.98, 0.98].forEach(xE => {
+                const eye = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 10), eyeMat);
+                eye.position.set(xE, 0.45, 1.0);
+                upperJaw.add(eye);
+            });
+
+            const fangGeo = new THREE.ConeGeometry(0.15, 0.8, 6);
+            [-0.55, 0.55].forEach(xF => {
+                const fang = new THREE.Mesh(fangGeo, hornMat);
+                fang.rotation.x = Math.PI;
+                fang.position.set(xF, -0.35, 1.85);
+                fang.name = 'fang';
+                upperJaw.add(fang);
+            });
+
+            snakeHead.add(upperJaw);
+
+            // Rahang Bawah & Lidah Bercabang
+            lowerJaw = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.45, 2.5), bellyMat);
+            lowerJaw.position.set(0, -0.35, 0.45);
+            snakeHead.add(lowerJaw);
+
+            const tongueMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
+            tongueMesh = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.06, 1.6), tongueMat);
+            tongueMesh.position.set(0, -0.1, 2.3);
+            snakeHead.add(tongueMesh);
+
+            // Efek Tebasan Gigitan (Klik Kanan)
+            const slashGeo = new THREE.RingGeometry(1.6, 3.8, 20, 1, -Math.PI * 0.42, Math.PI * 0.84);
+            const slashMat = new THREE.MeshBasicMaterial({
+                color: 0x34d399,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0
+            });
+            slashMesh = new THREE.Mesh(slashGeo, slashMat);
+            slashMesh.rotation.x = -Math.PI / 2;
+            slashMesh.rotation.z = -Math.PI / 2;
+            slashMesh.position.set(0, 0.1, 2.6);
+            snakeHead.add(slashMesh);
+
+            // Panah Kompas 3D Melayang di Depan Ular Menunjuk ke Objektif Aktif
+            const compassGeo = new THREE.ConeGeometry(0.45, 1.25, 4);
+            const compassMat = new THREE.MeshBasicMaterial({
+                color: 0xfbbf24,
+                transparent: true,
+                opacity: 0.85
+            });
+            compassRing3D = new THREE.Mesh(compassGeo, compassMat);
+            compassRing3D.rotation.x = Math.PI / 2;
+            scene.add(compassRing3D);
+
+            // 16 Segmen Tubuh Meliuk dengan Pola Punggung Bercahaya
+            snakeSegments.length = 0;
+            const glowDorsalMat = new THREE.MeshStandardMaterial({
+                color: 0x34d399,
+                emissive: 0x059669,
+                emissiveIntensity: 0.45
+            });
+
+            for (let i = 0; i < NUM_SEGMENTS; i++) {
+                const ratio = 1 - (i / (NUM_SEGMENTS + 2));
+                const radius = 1.1 * ratio;
+                const segGroup = new THREE.Group();
+
+                const bodyMesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 14, 12), headMat);
+                bodyMesh.scale.set(1.05, 0.9, 1.25);
+                bodyMesh.castShadow = true;
+                bodyMesh.receiveShadow = true;
+                segGroup.add(bodyMesh);
+
+                if (i % 2 === 0) {
+                    const spike = new THREE.Mesh(
+                        new THREE.ConeGeometry(radius * 0.28, radius * 0.88, 5),
+                        glowDorsalMat
+                    );
+                    spike.position.set(0, radius * 0.88, 0);
+                    spike.rotation.x = -0.35;
+                    spike.name = 'armorSpike';
+                    segGroup.add(spike);
+                }
+
+                segGroup.position.set(player.pos.x, radius, player.pos.z + (i + 1) * 1.45);
+                snakeGroup.add(segGroup);
+                snakeSegments.push(segGroup);
+            }
+
+            player.pathHistory = [];
+            for (let i = 0; i < 180; i++) {
+                player.pathHistory.push(new THREE.Vector3(player.pos.x, 1.2, player.pos.z + i * 0.25));
+            }
+        }
+
+        // --- 6. POPULASI DUNIA, SUMBER DAYA & 5 RINTANGAN MULTI-ZONA ---
+        function populateWorld() {
+            // Bersihkan entitas lama saat reset
+            resources.forEach(r => scene.remove(r.mesh));
+            raptors.forEach(r => scene.remove(r.mesh));
+            rollingBoulders.forEach(b => scene.remove(b.mesh));
+            volcanicMeteors.forEach(m => { scene.remove(m.ringMesh); if (m.rockMesh) scene.remove(m.rockMesh); });
+            guardianTotems.forEach(t => { scene.remove(t.mesh); scene.remove(t.beamMesh); });
+            stonePillars.forEach(p => { scene.remove(p.mesh); scene.remove(p.geyserMesh); scene.remove(p.warnRing); });
+            shockwaves.forEach(s => scene.remove(s.mesh));
+            parentSnakes.forEach(p => scene.remove(p));
+
+            if (barricadeObstacle) scene.remove(barricadeObstacle.mesh);
+            if (lavaMesh) scene.remove(lavaMesh);
+            if (bridgeTree) scene.remove(bridgeTree.mesh);
+            if (totemGate) scene.remove(totemGate.mesh);
+            if (trexBoss) scene.remove(trexBoss.mesh);
+            if (boneCage) scene.remove(boneCage.mesh);
+
+            resources = [];
+            raptors = [];
+            rollingBoulders = [];
+            volcanicMeteors = [];
+            guardianTotems = [];
+            stonePillars = [];
+            shockwaves = [];
+            parentSnakes = [];
+
+            // A. Sumber Daya di Zona 1, 2, dan 3
+            const zones = [
+                { zMin: 78, zMax: 145, wood: 12, crystal: 10, food: 12 }, // Zona 1: Hutan Purba
+                { zMin: 2, zMax: 58, wood: 6, crystal: 8, food: 8 },     // Zona 2: Ngarai Batu
+                { zMin: -102, zMax: -34, wood: 4, crystal: 9, food: 8 }   // Zona 3: Dataran Vulkanik
+            ];
+
+            zones.forEach(zSpec => {
+                const items = [
+                    { type: 'wood', count: zSpec.wood, maxHp: 40, name: 'Pohon Purba' },
+                    { type: 'crystal', count: zSpec.crystal, maxHp: 50, name: 'Batu Kristal' },
+                    { type: 'food', count: zSpec.food, maxHp: 25, name: 'Semak Buah Purba' }
+                ];
+                items.forEach(spec => {
+                    for (let i = 0; i < spec.count; i++) {
+                        let pos, valid = false, tries = 0;
+                        while (!valid && tries < 25) {
+                            tries++;
+                            const x = (Math.random() - 0.5) * 92;
+                            const z = zSpec.zMin + Math.random() * (zSpec.zMax - zSpec.zMin);
+                            pos = new THREE.Vector3(x, 0, z);
+                            if (pos.distanceTo(START_POS) > 14 && pos.distanceTo(BRIDGE_TREE_POS) > 10) {
+                                valid = true;
+                            }
+                        }
+                        const mesh = createResourceMesh(spec.type);
+                        mesh.position.copy(pos);
+                        scene.add(mesh);
+                        resources.push({
+                            type: spec.type,
+                            name: spec.name,
+                            mesh: mesh,
+                            pos: pos,
+                            hp: spec.maxHp,
+                            maxHp: spec.maxHp,
+                            depleted: false,
+                            respawnTimer: 0
+                        });
+                    }
+                });
+            });
+
+            // B. RINTANGAN 1: Barikade Akar Berduri & Batu Runtuhan (z = +68)
+            buildBarricadeObstacle();
+
+            // C. RINTANGAN 3: Sungai Lava Mendidih + Jembatan Pohon Raksasa + Pilar Geyser Api (z = -10 s/d -26)
+            buildLavaRiverAndBridge();
+
+            // D. RINTANGAN 5: Gerbang Energi Tulang & 2 Pilar Totem Penjaga (z = -112)
+            buildTotemGateAndPillars();
+
+            // E. Raptor Penjaga di Setiap Zona
+            const raptorSpots = [
+                { pos: new THREE.Vector3(-22, 0, 118), hp: 80, dmg: 11 },
+                { pos: new THREE.Vector3(24, 0, 96), hp: 80, dmg: 11 },
+                { pos: new THREE.Vector3(0, 0, 78), hp: 90, dmg: 12 },
+                { pos: new THREE.Vector3(-25, 0, 10), hp: 95, dmg: 13 },
+                { pos: new THREE.Vector3(25, 0, -38), hp: 105, dmg: 14 },
+                { pos: new THREE.Vector3(-18, 0, -96), hp: 115, dmg: 15 }, // Penjaga Totem Kiri
+                { pos: new THREE.Vector3(18, 0, -96), hp: 115, dmg: 15 }   // Penjaga Totem Kanan
+            ];
+            raptorSpots.forEach((sp, idx) => {
+                const mesh = createRaptorMesh();
+                mesh.position.copy(sp.pos);
+                scene.add(mesh);
+                raptors.push({
+                    id: idx,
+                    mesh: mesh,
+                    homePos: sp.pos.clone(),
+                    pos: sp.pos.clone(),
+                    hp: sp.hp,
+                    maxHp: sp.hp,
+                    damage: sp.dmg,
+                    speed: 13.8,
+                    attackCd: 0,
+                    dead: false,
+                    respawnTimer: 0
+                });
+            });
+
+            // F. ZONA FINAL: Kandang Tulang Raksasa, Ayah & Ibu Ular, & Raja Tyrannosaurus
+            buildBoneCageAndParents();
+            buildTrexBoss();
+        }
+
+        function buildBarricadeObstacle() {
+            const grp = new THREE.Group();
+            grp.position.copy(BARRICADE_POS);
+
+            const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a2c16, roughness: 0.9 });
+            const thornMat = new THREE.MeshStandardMaterial({
+                color: 0x991b1b,
+                emissive: 0x450a0a,
+                emissiveIntensity: 0.5
+            });
+            const rockMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.85 });
+
+            // Batang-batang akar & kayu tumbang melintang
+            for (let i = -11; i <= 11; i += 4.4) {
+                const log = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.05, 7.5, 7), woodMat);
+                log.position.set(i, 2.2, (i % 2) * 0.8);
+                log.rotation.z = (Math.random() - 0.5) * 0.9;
+                log.rotation.x = 0.25;
+                log.castShadow = true;
+                grp.add(log);
+
+                // Duri merah purba
+                const thorn = new THREE.Mesh(new THREE.ConeGeometry(0.45, 2.4, 5), thornMat);
+                thorn.position.set(i, 4.5, 0.5);
+                thorn.rotation.x = 0.5;
+                grp.add(thorn);
+            }
+
+            // Bongkahan batu runtuhan di tengah
+            [-5, 0, 5].forEach(bx => {
+                const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(2.4, 0), rockMat);
+                boulder.position.set(bx, 1.8, 0.6);
+                boulder.castShadow = true;
+                grp.add(boulder);
+            });
+
+            scene.add(grp);
+            barricadeObstacle = {
+                mesh: grp,
+                pos: BARRICADE_POS.clone(),
+                hp: 110,
+                maxHp: 110,
+                broken: false
+            };
+        }
+
+        function buildLavaRiverAndBridge() {
+            // 1. Permukaan Sungai Lava Menyala (z = -10 sampai z = -26)
+            const lavaGeo = new THREE.PlaneGeometry(124, 16, 24, 8);
+            const lavaMat = new THREE.MeshStandardMaterial({
+                color: 0xf97316,
+                emissive: 0xdc2626,
+                emissiveIntensity: 0.95,
+                roughness: 0.3
+            });
+            lavaMesh = new THREE.Mesh(lavaGeo, lavaMat);
+            lavaMesh.rotation.x = -Math.PI / 2;
+            lavaMesh.position.set(0, 0.12, -18);
+            scene.add(lavaMesh);
+
+            // 2. Jalur Kiri: 4 Pilar Batu Basalt + 2 Geyser Api Berwaktu (x = -12)
+            const pillarMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
+            const pillarZ = [-11.5, -15.8, -20.2, -24.5];
+            pillarZ.forEach((pz, idx) => {
+                const pMesh = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.9, 1.1, 8), pillarMat);
+                pMesh.position.set(-12, 0.45, pz);
+                pMesh.receiveShadow = true;
+                scene.add(pMesh);
+
+                const hasGeyser = (idx === 1 || idx === 2);
+                const geyserMat = new THREE.MeshBasicMaterial({
+                    color: 0xfacc15,
+                    transparent: true,
+                    opacity: 0.85
+                });
+                const geyserMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.7, 9.5, 10), geyserMat);
+                geyserMesh.position.set(-12, 5.0, pz);
+                geyserMesh.visible = false;
+                scene.add(geyserMesh);
+
+                const warnGeo = new THREE.RingGeometry(1.4, 2.2, 24);
+                const warnMat = new THREE.MeshBasicMaterial({
+                    color: 0xef4444,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0
+                });
+                const warnRing = new THREE.Mesh(warnGeo, warnMat);
+                warnRing.rotation.x = -Math.PI / 2;
+                warnRing.position.set(-12, 1.05, pz);
+                scene.add(warnRing);
+
+                stonePillars.push({
+                    pos: new THREE.Vector3(-12, 0, pz),
+                    radius: 2.75,
+                    hasGeyser: hasGeyser,
+                    timer: idx * 1.9, // Fase bergantian antara pilar 2 dan pilar 3
+                    erupting: false,
+                    mesh: pMesh,
+                    geyserMesh: geyserMesh,
+                    warnRing: warnRing
+                });
+            });
+
+            // 3. Jalur Kanan (Puzzle Interaktif): Pohon Raksasa Lapuk di Tepi Selatan Sungai (x = +12, z = -7.5)
+            const treePivot = new THREE.Group();
+            treePivot.position.copy(BRIDGE_TREE_POS);
+
+            const deadBarkMat = new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.9 });
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2.1, 20.5, 9), deadBarkMat);
+            trunk.position.set(0, 10.25, 0);
+            trunk.castShadow = true;
+            trunk.receiveShadow = true;
+            treePivot.add(trunk);
+
+            // Cincin emas penanda pohon bisa ditebang jadi jembatan
+            const hintRing = new THREE.Mesh(
+                new THREE.RingGeometry(2.5, 3.2, 28),
+                new THREE.MeshBasicMaterial({ color: 0xfbbf24, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
+            );
+            hintRing.rotation.x = -Math.PI / 2;
+            hintRing.position.y = 0.16;
+            hintRing.name = 'bridgeHintRing';
+            treePivot.add(hintRing);
+
+            scene.add(treePivot);
+            bridgeTree = {
+                mesh: treePivot,
+                pos: BRIDGE_TREE_POS.clone(),
+                hp: 90,
+                maxHp: 90,
+                fallen: false,
+                fallProgress: 0
+            };
+        }
+
+        function buildTotemGateAndPillars() {
+            // Gerbang Energi Merah-Ungu di z = -112
+            const gateGeo = new THREE.BoxGeometry(28, 11, 1.2);
+            const gateMat = new THREE.MeshBasicMaterial({
+                color: 0xa855f7,
+                transparent: true,
+                opacity: 0.52
+            });
+            const gateMesh = new THREE.Mesh(gateGeo, gateMat);
+            gateMesh.position.set(0, 5.5, TOTEM_GATE_POS.z);
+            scene.add(gateMesh);
+
+            totemGate = {
+                mesh: gateMesh,
+                pos: TOTEM_GATE_POS.clone(),
+                open: false
+            };
+
+            // 2 Pilar Totem Kristal Penjaga di (-18, -103) dan (+18, -103)
+            const totemPositions = [
+                new THREE.Vector3(-18, 0, -103),
+                new THREE.Vector3(18, 0, -103)
+            ];
+            const stoneMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7 });
+            const crystalMat = new THREE.MeshStandardMaterial({
+                color: 0xc084fc,
+                emissive: 0x9333ea,
+                emissiveIntensity: 0.85
+            });
+
+            totemPositions.forEach((tPos, idx) => {
+                const tGrp = new THREE.Group();
+                tGrp.position.copy(tPos);
+
+                const base = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2.0, 5.5, 6), stoneMat);
+                base.position.y = 2.75;
+                base.castShadow = true;
+                tGrp.add(base);
+
+                const orb = new THREE.Mesh(new THREE.OctahedronGeometry(1.4, 0), crystalMat);
+                orb.position.y = 6.8;
+                orb.name = 'totemOrb';
+                tGrp.add(orb);
+
+                scene.add(tGrp);
+
+                // Sinar energi penghubung Totem -> Gerbang
+                const startPt = new THREE.Vector3(tPos.x, 6.8, tPos.z);
+                const endPt = new THREE.Vector3(tPos.x * 0.4, 5.5, TOTEM_GATE_POS.z);
+                const dist = startPt.distanceTo(endPt);
+                const beamGeo = new THREE.CylinderGeometry(0.18, 0.18, dist, 6);
+                beamGeo.rotateX(Math.PI / 2);
+                const beamMat = new THREE.MeshBasicMaterial({ color: 0xe879f9 });
+                const beamMesh = new THREE.Mesh(beamGeo, beamMat);
+                beamMesh.position.copy(startPt).lerp(endPt, 0.5);
+                beamMesh.lookAt(endPt);
+                scene.add(beamMesh);
+
+                guardianTotems.push({
+                    id: idx,
+                    mesh: tGrp,
+                    beamMesh: beamMesh,
+                    pos: tPos.clone(),
+                    hp: 100,
+                    maxHp: 100,
+                    destroyed: false
+                });
+            });
+        }
+
+        function createResourceMesh(type) {
+            const group = new THREE.Group();
+            if (type === 'wood') {
+                const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.9 });
+                const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.15, 6.5, 7), trunkMat);
+                trunk.position.y = 3.25;
+                trunk.castShadow = true;
+                group.add(trunk);
+
+                const leafMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.7 });
+                for (let j = 0; j < 3; j++) {
+                    const crown = new THREE.Mesh(new THREE.ConeGeometry(3.4 - j * 0.6, 3.2, 7), leafMat);
+                    crown.position.y = 6.2 + j * 1.6;
+                    crown.castShadow = true;
+                    group.add(crown);
+                }
+            } else if (type === 'crystal') {
+                const stoneMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85 });
+                const base = new THREE.Mesh(new THREE.DodecahedronGeometry(1.8, 0), stoneMat);
+                base.position.y = 1.0;
+                base.castShadow = true;
+                group.add(base);
+
+                const crystalMat = new THREE.MeshStandardMaterial({
+                    color: 0x22d3ee,
+                    emissive: 0x0891b2,
+                    emissiveIntensity: 0.65,
+                    roughness: 0.2
+                });
+                for (let c = 0; c < 4; c++) {
+                    const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.85, 0), crystalMat);
+                    shard.scale.set(0.65, 2.2, 0.65);
+                    shard.position.set(Math.cos(c * 1.6) * 0.85, 1.8 + (c % 2) * 0.5, Math.sin(c * 1.6) * 0.85);
+                    shard.rotation.set((Math.random() - 0.5) * 0.5, c, (Math.random() - 0.5) * 0.5);
+                    group.add(shard);
+                }
+            } else {
+                const bushMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.8 });
+                const bush = new THREE.Mesh(new THREE.DodecahedronGeometry(1.75, 1), bushMat);
+                bush.position.y = 1.25;
+                bush.castShadow = true;
+                group.add(bush);
+
+                const berryMat = new THREE.MeshStandardMaterial({
+                    color: 0xf43f5e,
+                    emissive: 0xbe123c,
+                    emissiveIntensity: 0.45
+                });
+                for (let b = 0; b < 7; b++) {
+                    const berry = new THREE.Mesh(new THREE.SphereGeometry(0.34, 8, 8), berryMat);
+                    const theta = (b / 7) * Math.PI * 2;
+                    berry.position.set(Math.cos(theta) * 1.45, 1.4 + (b % 2) * 0.4, Math.sin(theta) * 1.45);
+                    group.add(berry);
+                }
+            }
+            return group;
+        }
+
+        function createRaptorMesh() {
+            const group = new THREE.Group();
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.6 });
+            const stripeMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.5 });
+
+            const body = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.2, 2.8), skinMat);
+            body.position.set(0, 1.6, 0);
+            body.castShadow = true;
+            group.add(body);
+
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.9, 1.6), stripeMat);
+            head.position.set(0, 2.35, 1.65);
+            head.castShadow = true;
+            group.add(head);
+
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+            [-0.48, 0.48].forEach(xE => {
+                const eye = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 6), eyeMat);
+                eye.position.set(xE, 2.5, 1.85);
+                group.add(eye);
+            });
+
+            const tail = new THREE.Mesh(new THREE.ConeGeometry(0.45, 3.2, 5), skinMat);
+            tail.rotation.x = -Math.PI / 2;
+            tail.position.set(0, 1.75, -2.7);
+            group.add(tail);
+
+            [-0.55, 0.55].forEach((xL, idx) => {
+                const leg = new THREE.Mesh(new THREE.BoxGeometry(0.38, 1.4, 0.5), skinMat);
+                leg.position.set(xL, 0.7, 0);
+                leg.name = idx === 0 ? 'legL' : 'legR';
+                group.add(leg);
+            });
+
+            return group;
+        }
+
+        function buildBoneCageAndParents() {
+            const cageGroup = new THREE.Group();
+            cageGroup.position.copy(CAGE_POS);
+            scene.add(cageGroup);
+
+            const boneMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f4, roughness: 0.45 });
+            const runeMat = new THREE.MeshStandardMaterial({
+                color: 0xf59e0b,
+                emissive: 0xd97706,
+                emissiveIntensity: 0.75
+            });
+
+            const numBars = 14;
+            const cageRadius = 7.4;
+            for (let i = 0; i < numBars; i++) {
+                const angle = (i / numBars) * Math.PI * 2;
+                const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.48, 9.8, 8), boneMat);
+                bar.position.set(Math.cos(angle) * cageRadius, 4.9, Math.sin(angle) * cageRadius);
+                bar.rotation.z = -Math.cos(angle) * 0.16;
+                bar.rotation.x = -Math.sin(angle) * 0.16;
+                bar.castShadow = true;
+                cageGroup.add(bar);
+            }
+
+            const topRing = new THREE.Mesh(new THREE.TorusGeometry(cageRadius * 0.88, 0.45, 8, 24), runeMat);
+            topRing.rotation.x = Math.PI / 2;
+            topRing.position.y = 9.5;
+            cageGroup.add(topRing);
+
+            // Suar cahaya tinggi agar selalu tampak di kejauhan
+            const beacon = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.9, 2.4, 130, 16, 1, true),
+                new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.16, side: THREE.DoubleSide })
+            );
+            beacon.position.y = 65;
+            cageGroup.add(beacon);
+
+            boneCage = { mesh: cageGroup, pos: CAGE_POS.clone(), broken: false };
+
+            const fatherSnake = createParentSnakeMesh(0x059669, 0xfbbf24, 1.38);
+            fatherSnake.position.set(CAGE_POS.x - 2.2, 1.2, CAGE_POS.z);
+            scene.add(fatherSnake);
+            parentSnakes.push(fatherSnake);
+
+            const motherSnake = createParentSnakeMesh(0x0284c7, 0xf472b6, 1.22);
+            motherSnake.position.set(CAGE_POS.x + 2.2, 1.1, CAGE_POS.z + 0.8);
+            scene.add(motherSnake);
+            parentSnakes.push(motherSnake);
+        }
+
+        function createParentSnakeMesh(bodyColor, crestColor, scaleFactor) {
+            const grp = new THREE.Group();
+            const mat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.4 });
+            const crestMat = new THREE.MeshStandardMaterial({ color: crestColor, roughness: 0.3 });
+
+            const coil = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.55, 10, 20), mat);
+            coil.rotation.x = Math.PI / 2;
+            coil.position.y = -0.35;
+            grp.add(coil);
+
+            const head = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.9, 1.9), mat);
+            head.position.set(0, 0.9, 0.6);
+            grp.add(head);
+
+            const crown = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.2, 5), crestMat);
+            crown.position.set(0, 1.75, 0.2);
+            grp.add(crown);
+
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            [-0.65, 0.65].forEach(xE => {
+                const eye = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), eyeMat);
+                eye.position.set(xE, 1.05, 1.1);
+                grp.add(eye);
+            });
+
+            grp.scale.setScalar(scaleFactor);
+            return grp;
+        }
+
+        function buildTrexBoss() {
+            const bossGroup = new THREE.Group();
+            const startPos = new THREE.Vector3(CAGE_POS.x, 0, CAGE_POS.z + 24);
+            bossGroup.position.copy(startPos);
+
+            const tyrantTex = createScaleTexture('#450a0a', '#991b1b');
+            const bodyMat = new THREE.MeshStandardMaterial({ map: tyrantTex, roughness: 0.55 });
+            const bellyMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 });
+            const teethMat = new THREE.MeshStandardMaterial({ color: 0xfefce8, roughness: 0.2 });
+
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(4.6, 4.8, 8.5), bodyMat);
+            torso.position.set(0, 5.9, 0);
+            torso.rotation.x = -0.18;
+            torso.castShadow = true;
+            bossGroup.add(torso);
+
+            const headGroup = new THREE.Group();
+            headGroup.position.set(0, 8.6, 4.5);
+
+            const upperSkull = new THREE.Mesh(new THREE.BoxGeometry(3.5, 2.6, 5.0), bodyMat);
+            upperSkull.position.set(0, 0.6, 1.4);
+            upperSkull.castShadow = true;
+            headGroup.add(upperSkull);
+
+            for (let t = -1.2; t <= 1.2; t += 0.6) {
+                const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.8, 5), teethMat);
+                tooth.rotation.x = Math.PI;
+                tooth.position.set(t, -0.75, 3.3);
+                headGroup.add(tooth);
+            }
+
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+            [-1.78, 1.78].forEach(xE => {
+                const eye = new THREE.Mesh(new THREE.SphereGeometry(0.38, 8, 8), eyeMat);
+                eye.position.set(xE, 1.1, 1.6);
+                headGroup.add(eye);
+            });
+
+            const jaw = new THREE.Mesh(new THREE.BoxGeometry(2.9, 1.1, 4.4), bellyMat);
+            jaw.position.set(0, -1.1, 1.2);
+            jaw.name = 'trexJaw';
+            headGroup.add(jaw);
+
+            bossGroup.add(headGroup);
+
+            const tail = new THREE.Mesh(new THREE.ConeGeometry(1.95, 10.8, 7), bodyMat);
+            tail.rotation.x = -Math.PI / 2 - 0.1;
+            tail.position.set(0, 5.5, -8.6);
+            bossGroup.add(tail);
+
+            [-1.85, 1.85].forEach((xL, idx) => {
+                const leg = new THREE.Mesh(new THREE.BoxGeometry(1.55, 4.9, 2.0), bodyMat);
+                leg.position.set(xL, 2.45, -0.4);
+                leg.castShadow = true;
+                leg.name = idx === 0 ? 'trexLegL' : 'trexLegR';
+                bossGroup.add(leg);
+            });
+
+            scene.add(bossGroup);
+
+            trexBoss = {
+                mesh: bossGroup,
+                pos: startPos.clone(),
+                hp: 520,
+                maxHp: 520,
+                damage: 24,
+                speed: 14.8,
+                attackCd: 0,
+                slamTimer: 4.5,
+                roarTimer: 0,
+                dead: false
+            };
+        }
+
+        // --- 7. KONTROL INPUT: W/A/S/D, SPASI (DASH), KLIK KANAN (ATTACK/MINE) ---
+        function setupInputListeners() {
+            window.addEventListener('keydown', (e) => {
+                const k = e.key.toLowerCase();
+                if (k === 'w' || e.key === 'ArrowUp') keys.w = true;
+                if (k === 's' || e.key === 'ArrowDown') keys.s = true;
+                if (k === 'a' || e.key === 'ArrowLeft') keys.a = true;
+                if (k === 'd' || e.key === 'ArrowRight') keys.d = true;
+
+                if (e.code === 'Space' || e.key === ' ') {
+                    if (gameState === 'PLAYING') {
+                        e.preventDefault();
+                        sound.init();
+                        performDash();
+                    }
+                }
+
+                if (gameState === 'PLAYING') {
+                    if (k === '1') craftItem(1);
+                    if (k === '2') craftItem(2);
+                    if (k === '3') craftItem(3);
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                const k = e.key.toLowerCase();
+                if (k === 'w' || e.key === 'ArrowUp') keys.w = false;
+                if (k === 's' || e.key === 'ArrowDown') keys.s = false;
+                if (k === 'a' || e.key === 'ArrowLeft') keys.a = false;
+                if (k === 'd' || e.key === 'ArrowRight') keys.d = false;
+            });
+
+            window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+            const canvas = document.getElementById('game-canvas');
+            canvas.addEventListener('mousedown', (e) => {
+                if (gameState !== 'PLAYING') return;
+                sound.init();
+
+                if (e.button === 2) {
+                    e.preventDefault();
+                    performAttackAndMine();
+                } else if (e.button === 0) {
+                    camControl.isDragging = true;
+                    camControl.prevMouseX = e.clientX;
+                    camControl.prevMouseY = e.clientY;
+                }
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!camControl.isDragging) return;
+                const dx = e.clientX - camControl.prevMouseX;
+                const dy = e.clientY - camControl.prevMouseY;
+                camControl.prevMouseX = e.clientX;
+                camControl.prevMouseY = e.clientY;
+
+                camControl.yawOffset -= dx * 0.0075;
+                camControl.pitch = Math.max(0.18, Math.min(1.15, camControl.pitch + dy * 0.006));
+            });
+
+            window.addEventListener('mouseup', (e) => {
+                if (e.button === 0) camControl.isDragging = false;
+            });
+
+            canvas.addEventListener('wheel', (e) => {
+                camControl.distance = Math.max(13, Math.min(44, camControl.distance + e.deltaY * 0.015));
+            }, { passive: true });
+
+            // Kontrol Sentuh Mobile / Tablet
+            bindTouchButton('touch-w', 'w');
+            bindTouchButton('touch-a', 'a');
+            bindTouchButton('touch-s', 's');
+            bindTouchButton('touch-d', 'd');
+
+            const touchDash = document.getElementById('touch-dash');
+            if (touchDash) {
+                touchDash.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    if (gameState === 'PLAYING') { sound.init(); performDash(); }
+                });
+            }
+
+            const touchAtk = document.getElementById('touch-attack');
+            if (touchAtk) {
+                touchAtk.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    if (gameState === 'PLAYING') { sound.init(); performAttackAndMine(); }
+                });
+            }
+
+            document.getElementById('btn-start').addEventListener('click', () => {
+                sound.init();
+                startGame();
+            });
+
+            document.getElementById('btn-mute').addEventListener('click', () => {
+                sound.init();
+                const isMuted = sound.toggleMute();
+                document.getElementById('mute-icon').textContent = isMuted ? '🔇' : '🔊';
+                document.getElementById('mute-label').textContent = isMuted ? 'Bisu' : 'Suara';
+            });
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function bindTouchButton(elemId, keyName) {
+            const btn = document.getElementById(elemId);
+            if (!btn) return;
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[keyName] = true; });
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[keyName] = false; });
+        }
+
+        // --- 8. AKSI MELUNCUR CEPAT / DASH (SPASI) ---
+        function performDash() {
+            if (player.dashCooldown > 0 || player.dashTimer > 0) return;
+            if (player.stamina < 24) {
+                spawnFloatingText('⚡ Stamina Kurang! Makan Buah [1]', player.pos.clone().add(new THREE.Vector3(0, 3, 0)), '#38bdf8');
+                return;
+            }
+
+            player.stamina -= 24;
+            player.dashTimer = 0.28;
+            player.dashCooldown = 0.55;
+            sound.playDash();
+
+            const dashVig = document.getElementById('dash-vignette');
+            dashVig.style.opacity = '1';
+            setTimeout(() => { dashVig.style.opacity = '0'; }, 240);
+
+            spawnParticles(player.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), 0x22d3ee, 16);
+            updateHUD();
+        }
+
+        // --- 9. AKSI UTAMA: ATTACK & MINE / CHOP (KLIK KANAN) ---
+        function performAttackAndMine() {
+            if (player.attackCooldown > 0 || gameState !== 'PLAYING') return;
+
+            player.attackCooldown = 0.32;
+            player.attackAnimTimer = 0.25;
+            sound.playBite();
+
+            const forward = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading));
+            const biteCenter = player.pos.clone().addScaledVector(forward, 3.8);
+            const biteRadius = 5.6;
+            let hitSomething = false;
+
+            // 1. Serang Barikade Akar Berduri & Batu Runtuhan (Rintangan 1)
+            if (barricadeObstacle && !barricadeObstacle.broken) {
+                if (Math.abs(biteCenter.z - barricadeObstacle.pos.z) <= 5.5 && Math.abs(biteCenter.x) <= 15) {
+                    hitSomething = true;
+                    const dmg = player.attackDamage;
+                    barricadeObstacle.hp -= dmg;
+                    sound.playMine('barricade');
+                    triggerScreenShake(0.45, 0.16);
+                    spawnParticles(biteCenter.clone().add(new THREE.Vector3(0, 2, 0)), 0xb45309, 14);
+                    spawnFloatingText(`-${dmg} Barikade`, biteCenter.clone().add(new THREE.Vector3(0, 4, 0)), '#fbbf24');
+
+                    if (barricadeObstacle.hp <= 0) {
+                        barricadeObstacle.broken = true;
+                        scene.remove(barricadeObstacle.mesh);
+                        player.inv.wood += 3;
+                        player.score += 180;
+                        triggerScreenShake(0.95, 0.35);
+                        spawnParticles(BARRICADE_POS.clone().add(new THREE.Vector3(0, 3, 0)), 0xfbbf24, 34);
+                        spawnFloatingText('💥 BARIKADE HANCUR! (+3 🪵 & +180 Skor)', BARRICADE_POS.clone().add(new THREE.Vector3(0, 5, 0)), '#34d399');
+                    }
+                }
+            }
+
+            // 2. Tebang Pohon Raksasa Lapuk jadi Jembatan Sungai Lava (Rintangan 3)
+            if (bridgeTree && !bridgeTree.fallen) {
+                if (biteCenter.distanceTo(bridgeTree.pos) <= biteRadius + 2.0) {
+                    hitSomething = true;
+                    const dmg = player.attackDamage;
+                    bridgeTree.hp -= dmg;
+                    sound.playMine('wood');
+                    triggerScreenShake(0.5, 0.18);
+                    bridgeTree.mesh.rotation.z = (Math.random() - 0.5) * 0.08;
+                    setTimeout(() => { if (bridgeTree && !bridgeTree.fallen) bridgeTree.mesh.rotation.z = 0; }, 110);
+
+                    spawnParticles(bridgeTree.pos.clone().add(new THREE.Vector3(0, 2.5, 0)), 0xd97706, 14);
+                    spawnFloatingText(`-${dmg} Tebang Pohon Jembatan`, bridgeTree.pos.clone().add(new THREE.Vector3(0, 5, 0)), '#fcd34d');
+
+                    if (bridgeTree.hp <= 0) {
+                        bridgeTree.fallen = true;
+                        const ring = bridgeTree.mesh.getObjectByName('bridgeHintRing');
+                        if (ring) ring.visible = false;
+                        player.score += 250;
+                        sound.playTreeCrash();
+                        triggerScreenShake(1.1, 0.5);
+                        spawnParticles(new THREE.Vector3(12, 1.5, -18), 0xf97316, 36);
+                        spawnFloatingText('🌉 JEMBATAN POHON TERBENTANG DI ATAS LAVA!', bridgeTree.pos.clone().add(new THREE.Vector3(0, 6, -4)), '#34d399');
+                    }
+                }
+            }
+
+            // 3. Hancurkan 2 Pilar Totem Kristal Penjaga Gerbang (Rintangan 5)
+            guardianTotems.forEach(totem => {
+                if (totem.destroyed) return;
+                if (biteCenter.distanceTo(totem.pos) <= biteRadius + 1.8) {
+                    hitSomething = true;
+                    const dmg = player.attackDamage;
+                    totem.hp -= dmg;
+                    sound.playMine('totem');
+                    triggerScreenShake(0.5, 0.16);
+                    spawnParticles(totem.pos.clone().add(new THREE.Vector3(0, 4, 0)), 0xc084fc, 15);
+                    spawnFloatingText(`-${dmg} Pilar Totem`, totem.pos.clone().add(new THREE.Vector3(0, 6.5, 0)), '#e879f9');
+
+                    if (totem.hp <= 0) {
+                        totem.destroyed = true;
+                        scene.remove(totem.mesh);
+                        scene.remove(totem.beamMesh);
+                        player.inv.crystal += 2;
+                        player.score += 220;
+                        triggerScreenShake(0.9, 0.32);
+                        spawnParticles(totem.pos.clone().add(new THREE.Vector3(0, 4, 0)), 0xe879f9, 30);
+                        spawnFloatingText('🗿 PILAR TOTEM HANCUR! (+2 💎)', totem.pos.clone().add(new THREE.Vector3(0, 6, 0)), '#38bdf8');
+
+                        // Cek apakah kedua totem sudah hancur -> buka Gerbang Energi
+                        if (guardianTotems.every(t => t.destroyed) && totemGate && !totemGate.open) {
+                            totemGate.open = true;
+                            scene.remove(totemGate.mesh);
+                            sound.playRoar();
+                            spawnParticles(TOTEM_GATE_POS.clone().add(new THREE.Vector3(0, 4, 0)), 0xa855f7, 45);
+                            spawnFloatingText('🔓 GERBANG TERKUTUK TERBUKA! MASUKI SARANG T-REX!', TOTEM_GATE_POS.clone().add(new THREE.Vector3(0, 6, 0)), '#fbbf24');
+                        }
+                    }
+                }
+            });
+
+            // 4. Serang Raja Tyrannosaurus Boss (Zona Final)
+            if (trexBoss && !trexBoss.dead) {
+                if (biteCenter.distanceTo(trexBoss.pos) <= biteRadius + 3.5) {
+                    hitSomething = true;
+                    const dmg = player.attackDamage;
+                    trexBoss.hp = Math.max(0, trexBoss.hp - dmg);
+                    triggerScreenShake(0.55, 0.18);
+                    spawnParticles(trexBoss.pos.clone().add(new THREE.Vector3(0, 4, 0)), 0xef4444, 18);
+                    spawnFloatingText(`-${dmg} HP T-Rex!`, trexBoss.pos.clone().add(new THREE.Vector3(0, 9.5, 0)), '#f87171');
+
+                    if (trexBoss.hp <= 0) {
+                        trexBoss.dead = true;
+                        trexBoss.mesh.rotation.z = Math.PI / 2;
+                        trexBoss.mesh.position.y = 1.6;
+                        player.score += 1200;
+                        sound.playRoar();
+                        triggerScreenShake(1.4, 0.65);
+
+                        // Bebaskan Ayah & Ibu Ular Purba dari Kandang Tulang!
+                        if (boneCage && !boneCage.broken) {
+                            boneCage.broken = true;
+                            scene.remove(boneCage.mesh);
+                            spawnParticles(CAGE_POS.clone().add(new THREE.Vector3(0, 4, 0)), 0xfbbf24, 55);
+                        }
+                        setTimeout(() => triggerVictory(), 1100);
+                    }
+                }
+            }
+
+            // 5. Serang Raptor Penjaga
+            raptors.forEach(raptor => {
+                if (raptor.dead) return;
+                if (biteCenter.distanceTo(raptor.pos) <= biteRadius + 1.5) {
+                    hitSomething = true;
+                    const dmg = player.attackDamage;
+                    raptor.hp -= dmg;
+                    raptor.pos.addScaledVector(forward, 2.6);
+                    spawnParticles(raptor.pos.clone().add(new THREE.Vector3(0, 2, 0)), 0xdc2626, 12);
+                    spawnFloatingText(`-${dmg}`, raptor.pos.clone().add(new THREE.Vector3(0, 3.5, 0)), '#fca5a5');
+
+                    if (raptor.hp <= 0) {
+                        raptor.dead = true;
+                        raptor.respawnTimer = 32;
+                        raptor.mesh.visible = false;
+                        player.inv.food += 2;
+                        player.inv.crystal += 1;
+                        player.score += 130;
+                        spawnFloatingText('+2 🍎 & +1 💎 (Raptor Kalah)', raptor.pos.clone().add(new THREE.Vector3(0, 3, 0)), '#34d399');
+                    }
+                }
+            });
+
+            // 6. Tambang Sumber Daya Alam (Pohon, Batu Kristal, Semak Buah)
+            resources.forEach(res => {
+                if (res.depleted) return;
+                if (biteCenter.distanceTo(res.pos) <= biteRadius + 1.2) {
+                    hitSomething = true;
+                    const mineDmg = player.attackDamage;
+                    res.hp -= mineDmg;
+
+                    res.mesh.scale.set(1.12, 0.88, 1.12);
+                    setTimeout(() => { if (res.mesh) res.mesh.scale.set(1, 1, 1); }, 110);
+                    sound.playMine(res.type);
+
+                    const pColor = res.type === 'wood' ? 0xb45309 : (res.type === 'crystal' ? 0x22d3ee : 0xf43f5e);
+                    spawnParticles(res.pos.clone().add(new THREE.Vector3(0, 2.2, 0)), pColor, 11);
+
+                    if (res.hp <= 0) {
+                        res.depleted = true;
+                        res.respawnTimer = 24;
+                        res.mesh.visible = false;
+                        player.score += 40;
+
+                        if (res.type === 'wood') {
+                            const gain = 2 + Math.floor(Math.random() * 2);
+                            player.inv.wood += gain;
+                            spawnFloatingText(`+${gain} 🪵 Kayu`, res.pos.clone().add(new THREE.Vector3(0, 3, 0)), '#fcd34d');
+                        } else if (res.type === 'crystal') {
+                            player.inv.crystal += 2;
+                            spawnFloatingText('+2 💎 Batu Kristal', res.pos.clone().add(new THREE.Vector3(0, 3, 0)), '#67e8f9');
+                        } else {
+                            player.inv.food += 2;
+                            player.stamina = Math.min(player.maxStamina, player.stamina + 15);
+                            spawnFloatingText('+2 🍎 Buah Purba', res.pos.clone().add(new THREE.Vector3(0, 3, 0)), '#fda4af');
+                        }
+                    } else {
+                        spawnFloatingText(`Tambang -${mineDmg}`, res.pos.clone().add(new THREE.Vector3(0, 3, 0)), '#e2e8f0');
+                    }
+                }
+            });
+
+            if (!hitSomething) {
+                spawnParticles(biteCenter.clone().add(new THREE.Vector3(0, 1.2, 0)), 0x34d399, 5);
+            }
+
+            updateHUD();
+        }
+
+        // --- 10. SISTEM CRAFTING & EVOLUSI (TOMBOL 1, 2, 3) ---
+        window.craftItem = function(slot) {
+            if (gameState !== 'PLAYING') return;
+            sound.init();
+
+            if (slot === 1) {
+                // Makan Buah Purba: 2 Buah -> +40 HP & +55 Stamina
+                if (player.inv.food >= 2) {
+                    player.inv.food -= 2;
+                    player.hp = Math.min(player.maxHp, player.hp + 40);
+                    player.stamina = Math.min(player.maxStamina, player.stamina + 55);
+                    player.score += 30;
+                    sound.playCraft();
+                    spawnParticles(player.pos.clone().add(new THREE.Vector3(0, 2, 0)), 0x10b981, 18);
+                    spawnFloatingText('+40 HP & +55 Stamina!', player.pos.clone().add(new THREE.Vector3(0, 3.6, 0)), '#34d399');
+                } else {
+                    spawnFloatingText('Butuh 2 🍎 Buah Purba!', player.pos.clone().add(new THREE.Vector3(0, 3, 0)), '#f87171');
+                }
+            } else if (slot === 2) {
+                // Evolusi Taring Tajam: 2 Kayu + 3 Kristal -> +18 Attack/Mine
+                if (player.inv.wood >= 2 && player.inv.crystal >= 3) {
+                    player.inv.wood -= 2;
+                    player.inv.crystal -= 3;
+                    player.attackDamage += 18;
+                    player.fangLevel += 1;
+                    player.score += 95;
+                    sound.playCraft();
+
+                    upperJaw.children.forEach(c => {
+                        if (c.name === 'fang') c.scale.multiplyScalar(1.2);
+                    });
+
+                    spawnParticles(player.pos.clone().add(new THREE.Vector3(0, 2, 0)), 0xfbbf24, 24);
+                    spawnFloatingText(`🦷 Taring Tajam Lv.${player.fangLevel} (+18 Serang)!`, player.pos.clone().add(new THREE.Vector3(0, 4, 0)), '#fbbf24');
+                } else {
+                    spawnFloatingText('Butuh 2 🪵 Kayu & 3 💎 Kristal!', player.pos.clone().add(new THREE.Vector3(0, 3, 0)), '#f87171');
+                }
+            } else if (slot === 3) {
+                // Evolusi Sisik Baja: 3 Kayu + 4 Kristal -> +40 Max HP & Heal
+                if (player.inv.wood >= 3 && player.inv.crystal >= 4) {
+                    player.inv.wood -= 3;
+                    player.inv.crystal -= 4;
+                    player.maxHp += 40;
+                    player.hp = Math.min(player.maxHp, player.hp + 60);
+                    player.armorLevel += 1;
+                    player.score += 110;
+                    sound.playCraft();
+
+                    snakeSegments.forEach(seg => {
+                        seg.children.forEach(c => {
+                            if (c.name === 'armorSpike') c.scale.multiplyScalar(1.22);
+                        });
+                    });
+
+                    spawnParticles(player.pos.clone().add(new THREE.Vector3(0, 2, 0)), 0x38bdf8, 24);
+                    spawnFloatingText(`🛡️ Sisik Baja Lv.${player.armorLevel} (+40 Max HP)!`, player.pos.clone().add(new THREE.Vector3(0, 4, 0)), '#38bdf8');
+                } else {
+                    spawnFloatingText('Butuh 3 🪵 Kayu & 4 💎 Kristal!', player.pos.clone().add(new THREE.Vector3(0, 3, 0)), '#f87171');
+                }
+            }
+
+            updateHUD();
+        };
+
+        // --- 11. PARTIKEL & TEKS MELAYANG ---
+        function spawnParticles(origin, colorHex, count) {
+            const geo = new THREE.BoxGeometry(0.36, 0.36, 0.36);
+            const mat = new THREE.MeshBasicMaterial({ color: colorHex });
+            for (let i = 0; i < count; i++) {
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(origin);
+                scene.add(mesh);
+                particles.push({
+                    mesh: mesh,
+                    vel: new THREE.Vector3(
+                        (Math.random() - 0.5) * 15,
+                        4 + Math.random() * 11,
+                        (Math.random() - 0.5) * 15
+                    ),
+                    life: 0.55 + Math.random() * 0.3
+                });
+            }
+        }
+
+        function spawnFloatingText(text, worldPos, color = '#ffffff') {
+            const container = document.getElementById('floating-container');
+            if (!container) return;
+
+            const vec = worldPos.clone().project(camera);
+            if (vec.z > 1) return;
+
+            const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (-(vec.y * 0.5) + 0.5) * window.innerHeight;
+
+            const el = document.createElement('div');
+            el.className = 'floating-text text-xs sm:text-sm';
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+            el.style.color = color;
+            el.textContent = text;
+            container.appendChild(el);
+
+            setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 1150);
+        }
+
+        // --- 12. UPDATE PEMAIN, GERAKAN, TABRAKAN RINTANGAN & BIOMA DINAMIS ---
+        function getActiveObjective() {
+            if (barricadeObstacle && !barricadeObstacle.broken) {
+                return {
+                    zone: 'ZONA 1/4: Hutan Purba',
+                    title: 'Dobrak Barikade Akar & Batu Runtuhan!',
+                    hint: 'Tambang Kayu/Kristal dulu atau Klik Kanan untuk menghancurkan barikade.',
+                    pos: BARRICADE_POS
+                };
+            }
+            if (player.pos.z > LAVA_Z_END && (!bridgeTree || !bridgeTree.fallen)) {
+                return {
+                    zone: 'ZONA 2/4: Ngarai & Sungai Lava',
+                    title: 'Seberangi Sungai Lava Mendidih!',
+                    hint: 'Tebang Pohon Raksasa Lapuk di kanan jadi jembatan, atau lompati pilar geyser!',
+                    pos: BRIDGE_TREE_POS
+                };
+            }
+            const remainingTotems = guardianTotems.filter(t => !t.destroyed);
+            if (remainingTotems.length > 0) {
+                // Arahkan ke totem terdekat yang belum hancur
+                let closest = remainingTotems[0];
+                remainingTotems.forEach(t => {
+                    if (player.pos.distanceTo(t.pos) < player.pos.distanceTo(closest.pos)) closest = t;
+                });
+                return {
+                    zone: 'ZONA 3/4: Dataran Vulkanik',
+                    title: `Hancurkan ${remainingTotems.length} Pilar Totem Penjaga!`,
+                    hint: 'Hindari hujan meteor merah & hancurkan totem dengan Klik Kanan.',
+                    pos: closest.pos
+                };
+            }
+            return {
+                zone: 'ZONA FINAL: Sarang Raja T-Rex',
+                title: 'Kalahkan Raja Tyrannosaurus & Bebaskan Orang Tua!',
+                hint: 'Waspadai hentakan gempa T-Rex! Gunakan [Spasi] Dash untuk menghindar.',
+                pos: trexBoss && !trexBoss.dead ? trexBoss.pos : CAGE_POS
+            };
+        }
+
+        function updateDynamicAtmosphere() {
+            // Transisi mulus langit & kabut dari Hutan Hijau (z=+150) ke Vulkanik Merah (z=-160)
+            const t = THREE.MathUtils.clamp((150 - player.pos.z) / 300, 0, 1);
+            const jungleCol = new THREE.Color(0x142b1d);
+            const canyonCol = new THREE.Color(0x2b1912);
+            const volcanoCol = new THREE.Color(0x240b0b);
+
+            const currentCol = new THREE.Color();
+            if (t < 0.5) {
+                currentCol.lerpColors(jungleCol, canyonCol, t * 2);
+            } else {
+                currentCol.lerpColors(canyonCol, volcanoCol, (t - 0.5) * 2);
+            }
+            scene.background.copy(currentCol);
+            scene.fog.color.copy(currentCol);
+        }
+
+        function updatePlayer(dt, elapsed) {
+            if (player.attackCooldown > 0) player.attackCooldown -= dt;
+            if (player.dashCooldown > 0) player.dashCooldown -= dt;
+            if (player.invulnTimer > 0) player.invulnTimer -= dt;
+
+            // Regenerasi Stamina Dash secara bertahap
+            player.stamina = Math.min(player.maxStamina, player.stamina + dt * 11.5);
+
+            // Animasi Gigitan Kepala Ular
+            if (player.attackAnimTimer > 0) {
+                player.attackAnimTimer -= dt;
+                const progress = 1 - (player.attackAnimTimer / 0.25);
+                const lunge = Math.sin(progress * Math.PI) * 2.3;
+                upperJaw.rotation.x = -Math.sin(progress * Math.PI) * 0.7;
+                lowerJaw.rotation.x = Math.sin(progress * Math.PI) * 0.45;
+                slashMesh.material.opacity = Math.sin(progress * Math.PI) * 0.88;
+                slashMesh.scale.setScalar(0.85 + progress * 0.65);
+                snakeHead.position.y = 1.35 + Math.sin(progress * Math.PI) * 0.45;
+                snakeHead.position.x = player.pos.x + Math.sin(player.heading) * lunge;
+                snakeHead.position.z = player.pos.z + Math.cos(player.heading) * lunge;
+            } else {
+                upperJaw.rotation.x = 0;
+                lowerJaw.rotation.x = 0;
+                slashMesh.material.opacity = 0;
+                snakeHead.position.set(player.pos.x, 1.25 + Math.sin(elapsed * 5) * 0.08, player.pos.z);
+            }
+
+            tongueMesh.position.z = 2.0 + Math.max(0, Math.sin(elapsed * 8)) * 0.75;
+
+            // Belok Kiri (A) & Kanan (D)
+            if (keys.a) {
+                player.heading += player.turnSpeed * dt;
+                camControl.yawOffset *= Math.pow(0.15, dt);
+            }
+            if (keys.d) {
+                player.heading -= player.turnSpeed * dt;
+                camControl.yawOffset *= Math.pow(0.15, dt);
+            }
+
+            // Gerak Maju (W), Mundur (S), atau Dash (Spasi)
+            let moveDir = 0;
+            if (keys.w) moveDir += 1;
+            if (keys.s) moveDir -= 0.65;
+
+            let activeSpeed = player.baseSpeed;
+            if (player.dashTimer > 0) {
+                player.dashTimer -= dt;
+                activeSpeed = player.baseSpeed * 2.45;
+                if (moveDir === 0) moveDir = 1; // Dash otomatis meluncur ke depan
+                if (Math.random() < 0.65) {
+                    spawnParticles(player.pos.clone().add(new THREE.Vector3(0, 1.0, 0)), 0x34d399, 1);
+                }
+            }
+
+            if (moveDir !== 0) {
+                const vx = Math.sin(player.heading) * activeSpeed * moveDir * dt;
+                const vz = Math.cos(player.heading) * activeSpeed * moveDir * dt;
+                player.pos.x += vx;
+                player.pos.z += vz;
+
+                // Batas Dinding Ngarai Kiri-Kanan & Utara-Selatan
+                let maxX = 52;
+                if (player.pos.z > 62 && player.pos.z < 74) maxX = 14.5;      // Celah Barikade
+                if (player.pos.z > -117 && player.pos.z < -107) maxX = 14.5;  // Celah Gerbang Totem
+                player.pos.x = THREE.MathUtils.clamp(player.pos.x, -maxX, maxX);
+                player.pos.z = THREE.MathUtils.clamp(player.pos.z, -196, 166);
+
+                // Tabrakan Fisik Rintangan 1: Barikade Akar (Belum hancur)
+                if (barricadeObstacle && !barricadeObstacle.broken) {
+                    if (player.pos.z < BARRICADE_POS.z + 3.8 && player.pos.z > BARRICADE_POS.z - 4.0) {
+                        player.pos.z = BARRICADE_POS.z + 3.8;
+                    }
+                }
+
+                // Tabrakan Fisik Rintangan 5: Gerbang Energi Totem (Belum terbuka)
+                if (totemGate && !totemGate.open) {
+                    if (player.pos.z < TOTEM_GATE_POS.z + 3.6 && player.pos.z > TOTEM_GATE_POS.z - 4.0) {
+                        player.pos.z = TOTEM_GATE_POS.z + 3.6;
+                    }
+                }
+
+                const lastPoint = player.pathHistory[0];
+                if (!lastPoint || lastPoint.distanceTo(player.pos) > 0.35) {
+                    player.pathHistory.unshift(player.pos.clone());
+                    if (player.pathHistory.length > 220) player.pathHistory.pop();
+                }
+            }
+
+            snakeHead.rotation.y = player.heading;
+
+            // Update Liukan 16 Segmen Tubuh Ular
+            const slitherSpeed = moveDir !== 0 ? (player.dashTimer > 0 ? 18 : 11) : 2.5;
+            const slitherAmp = moveDir !== 0 ? 0.56 : 0.14;
+
+            for (let i = 0; i < NUM_SEGMENTS; i++) {
+                const seg = snakeSegments[i];
+                const histIndex = Math.min(player.pathHistory.length - 1, (i + 1) * 4);
+                const targetPt = player.pathHistory[histIndex] || player.pos;
+
+                const perpAngle = player.heading + Math.PI / 2;
+                const wave = Math.sin(elapsed * slitherSpeed - i * 0.65) * slitherAmp * (1 - i / (NUM_SEGMENTS + 4));
+
+                const desiredX = targetPt.x + Math.sin(perpAngle) * wave;
+                const desiredZ = targetPt.z + Math.cos(perpAngle) * wave;
+
+                seg.position.x += (desiredX - seg.position.x) * Math.min(1, dt * 18);
+                seg.position.z += (desiredZ - seg.position.z) * Math.min(1, dt * 18);
+                seg.lookAt(
+                    i === 0 ? snakeHead.position.x : snakeSegments[i - 1].position.x,
+                    seg.position.y,
+                    i === 0 ? snakeHead.position.z : snakeSegments[i - 1].position.z
+                );
+            }
+
+            // Update Panah Kompas 3D Melayang di Depan Kepala Ular
+            const obj = getActiveObjective();
+            const dirToObj = obj.pos.clone().sub(player.pos);
+            dirToObj.y = 0;
+            if (dirToObj.length() > 1) {
+                dirToObj.normalize();
+                compassRing3D.position.set(
+                    player.pos.x + dirToObj.x * 4.5,
+                    2.6 + Math.sin(elapsed * 5) * 0.2,
+                    player.pos.z + dirToObj.z * 4.5
+                );
+                compassRing3D.lookAt(obj.pos.x, 2.6, obj.pos.z);
+            }
+
+            // Update Kamera Third-Person + Efek Screen Shake
+            const totalCamAngle = player.heading + Math.PI + camControl.yawOffset;
+            const horizDist = Math.cos(camControl.pitch) * camControl.distance;
+            const vertDist = Math.sin(camControl.pitch) * camControl.distance + 2.5;
+
+            const desiredCamPos = new THREE.Vector3(
+                player.pos.x + Math.sin(totalCamAngle) * horizDist,
+                vertDist,
+                player.pos.z + Math.cos(totalCamAngle) * horizDist
+            );
+            camera.position.lerp(desiredCamPos, Math.min(1, dt * 8.5));
+
+            if (camControl.shakeTimer > 0) {
+                camControl.shakeTimer -= dt;
+                camera.position.x += (Math.random() - 0.5) * camControl.shakeIntensity;
+                camera.position.y += (Math.random() - 0.5) * camControl.shakeIntensity;
+                if (camControl.shakeTimer <= 0) camControl.shakeIntensity = 0;
+            }
+
+            camera.lookAt(player.pos.x, 2.2, player.pos.z);
+
+            updateDynamicAtmosphere();
+            updateTargetIndicator();
+        }
+
+        function updateTargetIndicator() {
+            const forward = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading));
+            const biteCenter = player.pos.clone().addScaledVector(forward, 3.8);
+            let nearest = null;
+            let nearestDist = 7.2;
+            let promptLabel = '';
+
+            if (barricadeObstacle && !barricadeObstacle.broken && Math.abs(biteCenter.z - BARRICADE_POS.z) <= 5.5 && Math.abs(biteCenter.x) <= 15) {
+                nearest = BARRICADE_POS;
+                promptLabel = `🖱️ Klik Kanan: Dobrak Barikade Akar (${Math.ceil(barricadeObstacle.hp)} HP)`;
+            }
+
+            if (!nearest && bridgeTree && !bridgeTree.fallen && biteCenter.distanceTo(bridgeTree.pos) < 8.5) {
+                nearest = bridgeTree.pos;
+                promptLabel = `🖱️ Klik Kanan: Tebang Pohon Jembatan (${Math.ceil(bridgeTree.hp)} HP)`;
+            }
+
+            if (!nearest) {
+                guardianTotems.forEach(t => {
+                    if (t.destroyed) return;
+                    const d = biteCenter.distanceTo(t.pos);
+                    if (d < 8.0) {
+                        nearest = t.pos;
+                        promptLabel = `🖱️ Klik Kanan: Hancurkan Pilar Totem (${Math.ceil(t.hp)} HP)`;
+                    }
+                });
+            }
+
+            if (!nearest && trexBoss && !trexBoss.dead && biteCenter.distanceTo(trexBoss.pos) < 9.5) {
+                nearest = trexBoss.pos;
+                promptLabel = '🖱️ Klik Kanan: Gigit Raja Tyrannosaurus!';
+            }
+
+            if (!nearest) {
+                raptors.forEach(r => {
+                    if (r.dead) return;
+                    const d = biteCenter.distanceTo(r.pos);
+                    if (d < nearestDist) {
+                        nearest = r.pos;
+                        nearestDist = d;
+                        promptLabel = '🖱️ Klik Kanan: Serang Raptor Penjaga!';
+                    }
+                });
+            }
+
+            if (!nearest) {
+                resources.forEach(res => {
+                    if (res.depleted) return;
+                    const d = biteCenter.distanceTo(res.pos);
+                    if (d < nearestDist) {
+                        nearest = res.pos;
+                        nearestDist = d;
+                        promptLabel = `🖱️ Klik Kanan: Tambang ${res.name}`;
+                    }
+                });
+            }
+
+            const promptEl = document.getElementById('target-prompt');
+            if (nearest) {
+                targetRing.visible = true;
+                targetRing.position.set(nearest.x, 0.16, nearest.z);
+                promptEl.textContent = promptLabel;
+                promptEl.style.opacity = '1';
+            } else {
+                targetRing.visible = false;
+                promptEl.style.opacity = '0';
+            }
+        }
+
+        // --- 13. UPDATE SEMUA RINTANGAN, MUSUH & BOSS ---
+        function updateObstaclesAndEntities(dt, elapsed) {
+            // 1. Respawn Sumber Daya & Animasi Rotasi Kristal
+            resources.forEach(res => {
+                if (res.depleted) {
+                    res.respawnTimer -= dt;
+                    if (res.respawnTimer <= 0) {
+                        res.depleted = false;
+                        res.hp = res.maxHp;
+                        res.mesh.visible = true;
+                    }
+                } else if (res.type === 'crystal') {
+                    res.mesh.rotation.y += dt * 0.7;
+                }
+            });
+
+            // 2. RINTANGAN 2: Batu Raksasa Bergulir (Zona 2: z = +16 s/d +52)
+            if (player.pos.z < 75 && player.pos.z > -15) {
+                boulderSpawnTimer -= dt;
+                if (boulderSpawnTimer <= 0) {
+                    boulderSpawnTimer = 1.55;
+                    const fromLeft = Math.random() < 0.5;
+                    const laneZ = 18 + Math.random() * 32;
+                    const startX = fromLeft ? -48 : 48;
+                    const speedX = (fromLeft ? 1 : -1) * (22 + Math.random() * 10);
+
+                    const bMesh = new THREE.Mesh(
+                        new THREE.DodecahedronGeometry(2.5, 1),
+                        new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.88, flatShading: true })
+                    );
+                    bMesh.position.set(startX, 2.4, laneZ);
+                    bMesh.castShadow = true;
+                    scene.add(bMesh);
+
+                    rollingBoulders.push({ mesh: bMesh, vx: speedX, life: 4.5 });
+                }
+            }
+
+            for (let i = rollingBoulders.length - 1; i >= 0; i--) {
+                const b = rollingBoulders[i];
+                b.life -= dt;
+                b.mesh.position.x += b.vx * dt;
+                b.mesh.rotation.z -= (b.vx / 2.5) * dt;
+
+                if (Math.random() < 0.35) {
+                    spawnParticles(new THREE.Vector3(b.mesh.position.x, 0.4, b.mesh.position.z), 0xa8a29e, 1);
+                }
+
+                // Cek tabrakan dengan pemain (kecuali sedang Dash cepat)
+                if (player.dashTimer <= 0 && b.mesh.position.distanceTo(player.pos) < 3.4) {
+                    damagePlayer(18, 'Terlindas Batu Raksasa Bergulir di Ngarai!');
+                    player.pos.z += 4.5; // Terpental mundur sedikit
+                    triggerScreenShake(0.85, 0.3);
+                }
+
+                if (b.life <= 0 || Math.abs(b.mesh.position.x) > 54) {
+                    scene.remove(b.mesh);
+                    rollingBoulders.splice(i, 1);
+                }
+            }
+
+            // 3. RINTANGAN 3: Sungai Lava, Jembatan Pohon Raksasa & Geyser Api
+            if (lavaMesh) {
+                lavaMesh.material.emissiveIntensity = 0.85 + Math.sin(elapsed * 4) * 0.2;
+            }
+
+            // Animasi Pohon Raksasa Tumbang menjadi Jembatan
+            if (bridgeTree && bridgeTree.fallen && bridgeTree.fallProgress < 1) {
+                bridgeTree.fallProgress = Math.min(1, bridgeTree.fallProgress + dt * 1.35);
+                // Jatuh ke arah Utara (-Z), yaitu rotasi X negatif sebesar -PI/2
+                bridgeTree.mesh.rotation.x = -bridgeTree.fallProgress * (Math.PI / 2);
+                bridgeTree.mesh.position.y = bridgeTree.fallProgress * 0.85;
+            }
+
+            // Update Geyser Api Berwaktu pada Pilar Batu
+            let safeOnPillar = false;
+            stonePillars.forEach(p => {
+                if (p.hasGeyser) {
+                    p.timer = (p.timer + dt) % 4.4;
+                    if (p.timer < 2.0) {
+                        // Aman
+                        p.erupting = false;
+                        p.geyserMesh.visible = false;
+                        p.warnRing.material.opacity = 0;
+                    } else if (p.timer < 3.2) {
+                        // Fase Peringatan (Cincin Merah Berdenyut)
+                        p.erupting = false;
+                        p.geyserMesh.visible = false;
+                        p.warnRing.material.opacity = 0.45 + Math.sin(elapsed * 18) * 0.35;
+                    } else {
+                        // Fase Erupsi Geyser Api!
+                        if (!p.erupting) sound.playGeyserHiss();
+                        p.erupting = true;
+                        p.geyserMesh.visible = true;
+                        p.geyserMesh.scale.x = 0.85 + Math.sin(elapsed * 25) * 0.2;
+                        p.geyserMesh.scale.z = 0.85 + Math.cos(elapsed * 25) * 0.2;
+                        p.warnRing.material.opacity = 0.85;
+                    }
+                }
+
+                // Cek apakah ular berdiri di atas pilar ini
+                const distXZ = Math.hypot(player.pos.x - p.pos.x, player.pos.z - p.pos.z);
+                if (distXZ <= p.radius + 0.5) {
+                    if (p.erupting) {
+                        damagePlayer(20, 'Terbakar semburan Geyser Api Sungai Lava!');
+                    } else {
+                        safeOnPillar = true;
+                    }
+                }
+            });
+
+            // Cek apakah ular berada di zona Sungai Lava (z = -10.5 s/d -25.5)
+            if (player.pos.z < LAVA_Z_START - 0.5 && player.pos.z > LAVA_Z_END + 0.5) {
+                const onFallenBridge = (bridgeTree && bridgeTree.fallen && bridgeTree.fallProgress >= 0.85 && Math.abs(player.pos.x - BRIDGE_TREE_POS.x) <= 3.3);
+                if (!onFallenBridge && !safeOnPillar) {
+                    damagePlayer(24, 'Terjatuh ke dalam Sungai Lava Mendidih!');
+                    // Dorong kembali ke tepi sungai terdekat agar tidak terjebak
+                    player.pos.z = player.pos.z > -18 ? (LAVA_Z_START + 1.2) : (LAVA_Z_END - 1.2);
+                }
+            }
+
+            // 4. RINTANGAN 4: Hujan Meteor Vulkanik (Zona 3: z = -34 s/d -104)
+            if (player.pos.z < -30 && player.pos.z > -108) {
+                meteorSpawnTimer -= dt;
+                if (meteorSpawnTimer <= 0) {
+                    meteorSpawnTimer = 1.65;
+                    const targetX = THREE.MathUtils.clamp(player.pos.x + (Math.random() - 0.5) * 32, -44, 44);
+                    const targetZ = THREE.MathUtils.clamp(player.pos.z - 8 + (Math.random() - 0.5) * 28, -104, -36);
+
+                    const warnRing = new THREE.Mesh(
+                        new THREE.RingGeometry(0.5, 4.4, 28),
+                        new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide, transparent: true, opacity: 0.65 })
+                    );
+                    warnRing.rotation.x = -Math.PI / 2;
+                    warnRing.position.set(targetX, 0.18, targetZ);
+                    scene.add(warnRing);
+
+                    const mRock = new THREE.Mesh(
+                        new THREE.DodecahedronGeometry(1.9, 0),
+                        new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0xdc2626, emissiveIntensity: 0.9 })
+                    );
+                    mRock.position.set(targetX + 8, 42, targetZ - 6);
+                    scene.add(mRock);
+
+                    volcanicMeteors.push({
+                        target: new THREE.Vector3(targetX, 0, targetZ),
+                        startPos: mRock.position.clone(),
+                        ringMesh: warnRing,
+                        rockMesh: mRock,
+                        timer: 1.65,
+                        maxTimer: 1.65
+                    });
+                }
+            }
+
+            for (let i = volcanicMeteors.length - 1; i >= 0; i--) {
+                const m = volcanicMeteors[i];
+                m.timer -= dt;
+                const progress = 1 - Math.max(0, m.timer / m.maxTimer);
+
+                m.rockMesh.position.lerpVectors(m.startPos, m.target, progress);
+                m.rockMesh.rotation.x += dt * 6;
+                m.ringMesh.scale.setScalar(0.5 + progress * 0.55);
+
+                if (m.timer <= 0) {
+                    // Ledakan Dampak Meteor!
+                    sound.playMeteorImpact();
+                    spawnParticles(m.target.clone().add(new THREE.Vector3(0, 1.2, 0)), 0xf97316, 22);
+                    if (player.pos.distanceTo(m.target) < 18) {
+                        triggerScreenShake(0.6, 0.22);
+                    }
+                    if (player.dashTimer <= 0 && player.pos.distanceTo(m.target) <= 4.5) {
+                        damagePlayer(22, 'Terkena hantaman Hujan Meteor Vulkanik!');
+                    }
+                    scene.remove(m.ringMesh);
+                    scene.remove(m.rockMesh);
+                    volcanicMeteors.splice(i, 1);
+                }
+            }
+
+            // 5. Animasi Rotasi Kristal pada 2 Pilar Totem Penjaga
+            guardianTotems.forEach(t => {
+                if (!t.destroyed) {
+                    const orb = t.mesh.getObjectByName('totemOrb');
+                    if (orb) orb.rotation.y += dt * 2.2;
+                }
+            });
+
+            // 6. AI Raptor Penjaga
+            raptors.forEach(raptor => {
+                if (raptor.dead) {
+                    raptor.respawnTimer -= dt;
+                    if (raptor.respawnTimer <= 0) {
+                        raptor.dead = false;
+                        raptor.hp = raptor.maxHp;
+                        raptor.pos.copy(raptor.homePos);
+                        raptor.mesh.position.copy(raptor.pos);
+                        raptor.mesh.visible = true;
+                    }
+                    return;
+                }
+
+                if (raptor.attackCd > 0) raptor.attackCd -= dt;
+                const distToPlayer = raptor.pos.distanceTo(player.pos);
+
+                if (distToPlayer < 25) {
+                    const dir = player.pos.clone().sub(raptor.pos).normalize();
+                    if (distToPlayer > 3.6) {
+                        raptor.pos.addScaledVector(dir, raptor.speed * dt);
+                    } else if (raptor.attackCd <= 0) {
+                        raptor.attackCd = 1.45;
+                        damagePlayer(raptor.damage, 'Diterkam oleh Raptor Penjaga!');
+                    }
+                    raptor.mesh.lookAt(player.pos.x, 0, player.pos.z);
+
+                    const legL = raptor.mesh.getObjectByName('legL');
+                    const legR = raptor.mesh.getObjectByName('legR');
+                    if (legL && legR) {
+                        legL.rotation.x = Math.sin(elapsed * 14) * 0.6;
+                        legR.rotation.x = -Math.sin(elapsed * 14) * 0.6;
+                    }
+                } else {
+                    const patrolTarget = new THREE.Vector3(
+                        raptor.homePos.x + Math.cos(elapsed * 0.7 + raptor.id) * 6,
+                        0,
+                        raptor.homePos.z + Math.sin(elapsed * 0.7 + raptor.id) * 6
+                    );
+                    const dir = patrolTarget.sub(raptor.pos);
+                    if (dir.length() > 0.5) {
+                        dir.normalize();
+                        raptor.pos.addScaledVector(dir, 4.5 * dt);
+                        raptor.mesh.lookAt(raptor.pos.x + dir.x, 0, raptor.pos.z + dir.z);
+                    }
+                }
+                raptor.mesh.position.copy(raptor.pos);
+            });
+
+            // 7. AI Boss Raja Tyrannosaurus & Serangan Hentakan Gempa (Shockwave)
+            if (trexBoss && !trexBoss.dead) {
+                if (trexBoss.attackCd > 0) trexBoss.attackCd -= dt;
+                if (trexBoss.roarTimer > 0) trexBoss.roarTimer -= dt;
+
+                const distToPlayer = trexBoss.pos.distanceTo(player.pos);
+                const bossHud = document.getElementById('boss-hud');
+
+                if (player.pos.z < -112 || distToPlayer < 55) {
+                    bossHud.classList.remove('hidden');
+
+                    if (trexBoss.roarTimer <= 0 && distToPlayer < 45) {
+                        trexBoss.roarTimer = 9;
+                        sound.playRoar();
+                    }
+
+                    // Serangan Hentakan Gempa Berkala
+                    trexBoss.slamTimer -= dt;
+                    if (trexBoss.slamTimer <= 0 && distToPlayer < 35) {
+                        trexBoss.slamTimer = 5.8;
+                        sound.playMeteorImpact();
+                        triggerScreenShake(0.95, 0.35);
+                        spawnFloatingText('💥 HENTAKAN GEMPA T-REX!', trexBoss.pos.clone().add(new THREE.Vector3(0, 10, 0)), '#fbbf24');
+
+                        const swMesh = new THREE.Mesh(
+                            new THREE.RingGeometry(1.5, 2.8, 36),
+                            new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+                        );
+                        swMesh.rotation.x = -Math.PI / 2;
+                        swMesh.position.set(trexBoss.pos.x, 0.25, trexBoss.pos.z);
+                        scene.add(swMesh);
+                        shockwaves.push({ mesh: swMesh, origin: trexBoss.pos.clone(), radius: 2.0, hitPlayer: false });
+                    }
+
+                    // Kejar Ular Purba di dalam Arena Utara
+                    const dir = player.pos.clone().sub(trexBoss.pos);
+                    dir.y = 0;
+                    if (dir.length() > 6.4) {
+                        dir.normalize();
+                        trexBoss.pos.addScaledVector(dir, trexBoss.speed * dt);
+                        trexBoss.pos.z = Math.min(-120, trexBoss.pos.z); // Tetap di arena boss
+                    } else if (trexBoss.attackCd <= 0) {
+                        trexBoss.attackCd = 1.75;
+                        sound.playRoar();
+                        damagePlayer(trexBoss.damage, 'Tumbang oleh gigitan ganas Raja Tyrannosaurus!');
+                    }
+
+                    trexBoss.mesh.position.copy(trexBoss.pos);
+                    trexBoss.mesh.lookAt(player.pos.x, 0, player.pos.z);
+
+                    const legL = trexBoss.mesh.getObjectByName('trexLegL');
+                    const legR = trexBoss.mesh.getObjectByName('trexLegR');
+                    const jaw = trexBoss.mesh.getObjectByName('trexJaw');
+                    if (legL && legR) {
+                        legL.rotation.x = Math.sin(elapsed * 8) * 0.5;
+                        legR.rotation.x = -Math.sin(elapsed * 8) * 0.5;
+                    }
+                    if (jaw) {
+                        jaw.rotation.x = Math.abs(Math.sin(elapsed * 4.5)) * 0.35;
+                    }
+                } else {
+                    bossHud.classList.add('hidden');
+                }
+            }
+
+            // Update Gelombang Kejut Hentakan T-Rex
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                const sw = shockwaves[i];
+                sw.radius += 19 * dt;
+                sw.mesh.scale.setScalar(sw.radius / 2.2);
+                sw.mesh.material.opacity = Math.max(0, 1 - sw.radius / 24);
+
+                const pDist = player.pos.distanceTo(sw.origin);
+                if (!sw.hitPlayer && player.dashTimer <= 0 && Math.abs(pDist - sw.radius) < 1.8) {
+                    sw.hitPlayer = true;
+                    damagePlayer(18, 'Terhempas Hentakan Gempa Raja T-Rex! Gunakan [Spasi] Dash!');
+                }
+
+                if (sw.radius > 24) {
+                    scene.remove(sw.mesh);
+                    shockwaves.splice(i, 1);
+                }
+            }
+
+            // 8. Animasi & Teriakan Minta Tolong Ayah & Ibu Ular Purba
+            parentSnakes.forEach((ps, idx) => {
+                ps.position.y = 1.15 + Math.sin(elapsed * 3.5 + idx) * 0.16;
+                ps.lookAt(player.pos.x, ps.position.y, player.pos.z);
+            });
+
+            if (trexBoss && !trexBoss.dead && player.pos.z < -112) {
+                parentCalloutTimer -= dt;
+                if (parentCalloutTimer <= 0) {
+                    parentCalloutTimer = 5.5;
+                    const quotes = [
+                        '💬 Ayah Ular: "Cepat nak, kalahkan T-Rex!"',
+                        '💬 Ibu Ular: "Hati-hati hentakan kakinya, nak!"',
+                        '💬 Ayah Ular: "Gunakan Dash [Spasi] untuk menghindar!"'
+                    ];
+                    const msg = quotes[Math.floor(Math.random() * quotes.length)];
+                    spawnFloatingText(msg, CAGE_POS.clone().add(new THREE.Vector3(0, 7.5, 0)), '#fde047');
+                }
+            }
+
+            // 9. Update Partikel 3D
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.life -= dt;
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    particles.splice(i, 1);
+                } else {
+                    p.vel.y -= 24 * dt;
+                    p.mesh.position.addScaledVector(p.vel, dt);
+                    p.mesh.scale.setScalar(Math.max(0.05, p.life * 1.4));
+                }
+            }
+        }
+
+        function damagePlayer(amount, deathReason) {
+            if (player.invulnTimer > 0 || gameState !== 'PLAYING') return;
+            player.invulnTimer = 0.7;
+            player.hp = Math.max(0, player.hp - amount);
+
+            const vig = document.getElementById('damage-vignette');
+            vig.style.opacity = '1';
+            setTimeout(() => { vig.style.opacity = '0'; }, 280);
+
+            spawnParticles(player.pos.clone().add(new THREE.Vector3(0, 1.5, 0)), 0xef4444, 14);
+            spawnFloatingText(`-${amount} HP`, player.pos.clone().add(new THREE.Vector3(0, 3.3, 0)), '#ef4444');
+            updateHUD();
+
+            if (player.hp <= 0) {
+                triggerGameOver(deathReason);
+            }
+        }
+
+        // --- 14. PEMBARUAN HUD, KOMPAS & MINI-RADAR ---
+        function updateHUD() {
+            document.getElementById('hp-text').textContent = `${Math.ceil(player.hp)} / ${player.maxHp}`;
+            document.getElementById('hp-bar').style.width = `${(player.hp / player.maxHp) * 100}%`;
+
+            document.getElementById('stamina-text').textContent = `${Math.ceil(player.stamina)} / ${player.maxStamina}`;
+            document.getElementById('stamina-bar').style.width = `${(player.stamina / player.maxStamina) * 100}%`;
+
+            document.getElementById('stat-atk').textContent = player.attackDamage;
+            document.getElementById('stat-evo').textContent = 1 + player.fangLevel + player.armorLevel;
+            document.getElementById('score-badge').textContent = `Skor: ${player.score}`;
+
+            document.getElementById('inv-wood').textContent = player.inv.wood;
+            document.getElementById('inv-crystal').textContent = player.inv.crystal;
+            document.getElementById('inv-food').textContent = player.inv.food;
+
+            // Update Banner Misi Aktif & Kompas
+            const obj = getActiveObjective();
+            document.getElementById('zone-badge').textContent = obj.zone;
+            document.getElementById('quest-title').textContent = obj.title;
+            document.getElementById('quest-hint').textContent = obj.hint;
+
+            const dx = obj.pos.x - player.pos.x;
+            const dz = obj.pos.z - player.pos.z;
+            const distMeters = Math.max(0, Math.round(Math.hypot(dx, dz)));
+            document.getElementById('quest-distance').textContent = `${distMeters} m`;
+
+            const angleToObj = Math.atan2(dx, dz);
+            const relAngle = angleToObj - player.heading;
+            const deg = -(relAngle * 180) / Math.PI;
+            document.getElementById('compass-arrow').style.transform = `rotate(${deg}deg)`;
+
+            if (trexBoss) {
+                document.getElementById('boss-hp-text').textContent = `${Math.ceil(trexBoss.hp)} / ${trexBoss.maxHp}`;
+                document.getElementById('boss-hp-bar').style.width = `${(trexBoss.hp / trexBoss.maxHp) * 100}%`;
+                if (trexBoss.dead) {
+                    document.getElementById('cage-status').textContent = '🔓 Terbuka! Orang Tua Bebas!';
+                    document.getElementById('cage-status').className = 'text-emerald-300';
+                }
+            }
+
+            drawMiniRadar(obj.pos);
+        }
+
+        function drawMiniRadar(objectivePos) {
+            const canvas = document.getElementById('radar-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const scale = 0.72; // 1 unit dunia = 0.72 px radar
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Latar radar
+            ctx.fillStyle = '#090d0b';
+            ctx.fillRect(0, 0, w, h);
+
+            // Grid melingkar
+            ctx.strokeStyle = 'rgba(16, 185, 129, 0.18)';
+            ctx.lineWidth = 1;
+            [24, 48].forEach(r => {
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.stroke();
+            });
+
+            const toRadar = (worldPos) => ({
+                x: cx + (worldPos.x - player.pos.x) * scale,
+                y: cy + (worldPos.z - player.pos.z) * scale
+            });
+
+            // Gambar Sungai Lava pada radar
+            const lavaTop = toRadar({ x: 0, z: LAVA_Z_END }).y;
+            const lavaBot = toRadar({ x: 0, z: LAVA_Z_START }).y;
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.35)';
+            ctx.fillRect(0, lavaTop, w, Math.max(4, lavaBot - lavaTop));
+
+            // Gambar Sumber Daya (titik kecil)
+            resources.forEach(r => {
+                if (r.depleted) return;
+                const pt = toRadar(r.pos);
+                if (pt.x < 0 || pt.x > w || pt.y < 0 || pt.y > h) return;
+                ctx.fillStyle = r.type === 'wood' ? '#d97706' : (r.type === 'crystal' ? '#22d3ee' : '#fb7185');
+                ctx.fillRect(pt.x - 1.5, pt.y - 1.5, 3, 3);
+            });
+
+            // Gambar Batu Bergulir
+            rollingBoulders.forEach(b => {
+                const pt = toRadar(b.mesh.position);
+                ctx.fillStyle = '#f97316';
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 3.2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Gambar Raptor
+            raptors.forEach(r => {
+                if (r.dead) return;
+                const pt = toRadar(r.pos);
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Gambar Objektif Aktif (Titik Emas Berdenyut)
+            const objPt = toRadar(objectivePos);
+            const clampedX = THREE.MathUtils.clamp(objPt.x, 8, w - 8);
+            const clampedY = THREE.MathUtils.clamp(objPt.y, 8, h - 8);
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.arc(clampedX, clampedY, 4.8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Gambar Panah Pemain di Tengah Radar
+            ctx.save();
+            ctx.translate(cx, cy);
+            // Heading 0 = +Z (bawah di radar), Heading PI = -Z (atas di radar)
+            ctx.rotate(-player.heading + Math.PI);
+            ctx.fillStyle = '#34d399';
+            ctx.beginPath();
+            ctx.moveTo(0, -6);
+            ctx.lineTo(4.5, 5);
+            ctx.lineTo(0, 2.5);
+            ctx.lineTo(-4.5, 5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // --- 15. TRANSISI STATUS PERMAINAN (START, VICTORY, GAME OVER, RESET) ---
+        function startGame() {
+            document.getElementById('intro-screen').classList.add('hidden');
+            document.getElementById('victory-screen').classList.add('hidden');
+            document.getElementById('victory-screen').classList.remove('flex');
+            document.getElementById('gameover-screen').classList.add('hidden');
+            document.getElementById('gameover-screen').classList.remove('flex');
+
+            const hud = document.getElementById('hud');
+            hud.classList.remove('hidden');
+            hud.classList.add('flex');
+
+            gameState = 'PLAYING';
+            updateHUD();
+        }
+
+        function triggerVictory() {
+            gameState = 'VICTORY';
+            sound.playVictory();
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('victory-score').textContent = player.score;
+            document.getElementById('victory-atk').textContent = player.attackDamage;
+
+            const mins = String(Math.floor(missionElapsed / 60)).padStart(2, '0');
+            const secs = String(Math.floor(missionElapsed % 60)).padStart(2, '0');
+            document.getElementById('victory-time').textContent = `${mins}:${secs}`;
+
+            const vic = document.getElementById('victory-screen');
+            vic.classList.remove('hidden');
+            vic.classList.add('flex');
+        }
+
+        function triggerGameOver(reason) {
+            gameState = 'GAMEOVER';
+            sound.playRoar();
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('gameover-reason').textContent = reason;
+            document.getElementById('gameover-score').textContent = player.score;
+
+            const go = document.getElementById('gameover-screen');
+            go.classList.remove('hidden');
+            go.classList.add('flex');
+        }
+
+        window.resetGame = function() {
+            player.pos.copy(START_POS);
+            player.heading = Math.PI;
+            player.hp = 120;
+            player.maxHp = 120;
+            player.stamina = 100;
+            player.attackDamage = 22;
+            player.armorLevel = 0;
+            player.fangLevel = 0;
+            player.score = 0;
+            player.inv = { wood: 0, crystal: 0, food: 0 };
+            player.attackCooldown = 0;
+            player.attackAnimTimer = 0;
+            player.dashTimer = 0;
+            player.dashCooldown = 0;
+            player.invulnTimer = 0;
+            missionElapsed = 0;
+
+            camControl.yawOffset = 0;
+            camControl.shakeTimer = 0;
+
+            scene.remove(snakeGroup);
+            scene.remove(compassRing3D);
+            buildPlayerSnake();
+            populateWorld();
+
+            document.getElementById('boss-hud').classList.add('hidden');
+            document.getElementById('cage-status').textContent = '🔒 Terkunci oleh Raja T-Rex';
+            document.getElementById('cage-status').className = 'text-rose-300';
+
+            startGame();
+        };
+
+        // --- 16. LOOP ANIMASI UTAMA ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const dt = Math.min(clock.getDelta(), 0.05);
+            const elapsed = clock.getElapsedTime();
+
+            if (gameState === 'PLAYING') {
+                missionElapsed += dt;
+                updatePlayer(dt, elapsed);
+                updateObstaclesAndEntities(dt, elapsed);
+                updateHUD();
+            } else if (gameState === 'INTRO') {
+                const camAngle = elapsed * 0.32;
+                camera.position.set(
+                    player.pos.x + Math.sin(camAngle) * 20,
+                    9.5,
+                    player.pos.z + Math.cos(camAngle) * 20
+                );
+                camera.lookAt(player.pos.x, 2.2, player.pos.z - 8);
+            } else if (gameState === 'VICTORY') {
+                const camAngle = elapsed * 0.45;
+                camera.position.set(
+                    CAGE_POS.x + Math.sin(camAngle) * 18,
+                    8.5,
+                    CAGE_POS.z + Math.cos(camAngle) * 18
+                );
+                camera.lookAt(CAGE_POS.x, 2.0, CAGE_POS.z);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function() {
+            initThree();
+            animate();
+        };
+    </script>
+</body>
+</html>
